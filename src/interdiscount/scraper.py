@@ -1,12 +1,9 @@
 from bs4 import BeautifulSoup
-from selenium.common import TimeoutException, ElementNotInteractableException
-from selenium.webdriver.support.wait import WebDriverWait
-
-from src.model.category import Category
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+
+from src.model.article import Article
+from src.model.category import Category
 
 
 def processed_last_page(index, soup):
@@ -46,9 +43,11 @@ class Scraper:
     def scrape(self):
         categories = self._get_categories()
 
+        result = []
         for category in categories:
             if category.url and category.name == "Ausverkauf":
-                self._scrape_category(category)
+                result.append(self._scrape_category(category))
+        print(result)
 
 
     # GET ALL CATEGORIES AND ITS CORRESPONDING URLS
@@ -73,16 +72,21 @@ class Scraper:
         soup = BeautifulSoup(html, 'html.parser')
 
         # extract links from first page
-        product_links = [a.get('href') for a in soup.find_all('a',class_='Q_opE0', href=True)]
+        article_links = [a.get('href') for a in soup.find_all('a',class_='Q_opE0', href=True)]
 
-        self._loop_through_pages_and_extract_links(category,product_links, soup)
-        self._extract_data(product_links, category)
+        self._loop_through_pages_and_extract_links(category,article_links, soup)
+
+        articles = []
+        for article_link in article_links:
+            articles.append(self._extract_data(article_link, category, soup))
+        return articles
 
 
-    def _loop_through_pages_and_extract_links(self, category, product_links, soup):
+
+    def _loop_through_pages_and_extract_links(self, category, article_links, soup):
         has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
         index = 1
-        while has_next_page and len(product_links) < self.upper_limit_per_category and not processed_last_page(index, soup):
+        while has_next_page and len(article_links) < self.upper_limit_per_category and not processed_last_page(index, soup):
             index += 1
             self.driver.get(self.base_url + category.url + '?page=' + str(index)) #'&sort=price-desc' not allowed according to robots.txt
             # Update the BeautifulSoup object
@@ -90,15 +94,54 @@ class Scraper:
             soup = BeautifulSoup(html, 'html.parser')
 
             # Scrape the links from the page
-            product_links.extend([a.get('href') for a in soup.find_all('a', class_='Q_opE0', href=True)])
+            article_links.extend([a.get('href') for a in soup.find_all('a', class_='Q_opE0', href=True)])
             has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
 
-    def _extract_data(self, product_links, category):
-        extracted_data = []
+    def _extract_data(self, article_link, category, soup):
+        self.driver.get(self.base_url + article_link)
+        html = self.driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+
+        price = soup.find('span', attrs={'data-testid': 'product-price'})
+        price = float(price.contents[0].text.replace(".–",''))
+        name = soup.find('h1').contents[0].text
+        try:
+            self.driver.find_element(by=By.CLASS_NAME, value='h-min').click()  # close cookie-banner
+            self.driver.find_element(by=By.ID, value="collapsible-description").click()  # open Description/Beschreibung
+        except Exception as e:
+            print("not ofund")
+
+
+        description = soup.find('div', attrs={'data-testid': 'text-clamp'}).contents[0].text
+        description = description if description and description.strip() else None
+        try:
+            self.driver.find_element(by=By.ID, value="collapsible-reviews").click() # open Reviews/Bewertungen
+        except Exception as e:
+            print("not ofund")
+
+        try :
+            review_text = self.driver.find_element(by=By.XPATH, value=f"//*[@id='collapsible-reviews-controls']").text
+            if "Es liegen noch keine " in review_text:
+                rating = None
+            elif "Es liegen nur wenige" in review_text:
 
 
 
-        return extracted_data
+            # Es liegen nur wenige Bewertungen vor
+                rating_div = self.driver.find_element(by=By.XPATH, value=f"//*[@id='collapsible-reviews-controls']/*[1]/*[1]")
+                rating = float(rating_div.find_element(by=By.XPATH, value=".//div[3]").text)
+            else:
+                rating = float(self.driver.find_element(by=By.XPATH,
+                                         value=f"//div[contains(text(), 'Gesamtbewertung')]").parent.find_element(
+                    by=By.XPATH, value=f"./*[1]").find_element(by=By.CLASS_NAME, value="mr-4").text)
 
+        except Exception as e:
+            print("not found")
+            rating = None
+
+
+
+        article_link = Article(name, price, description, category, rating, "interdiscount")
+        return article_link
 
 
