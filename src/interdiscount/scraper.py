@@ -1,24 +1,23 @@
+import csv
+import os
+import time
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.wait import WebDriverWait
 
 from src.model.article import Article
 from src.model.category import Category
-import csv
-import os
 
 
 def processed_last_page(index, soup):
     weiter_button =  soup.find('li', class_='l-Be8I')
     parent = weiter_button.parent
-    # x = parent[len(parent)-2]
     return index-1 == int(parent.contents[len(parent)-2].text)
 
-
-
-
 class Scraper:
-    upper_limit_per_category = 150
+    upper_limit_per_category = 20
     def __init__(self, base_url):
         self._base_url = base_url
         self.driver = self.create_driver()
@@ -47,7 +46,7 @@ class Scraper:
 
         result = []
         for category in categories:
-            if category.url and category.name == "Ausverkauf":
+            if category.url:
                 result.append(self._scrape_category(category))
 
         self.write_to_csv(result)
@@ -77,6 +76,8 @@ class Scraper:
             category_name = li.get_text(strip=True)
             if category_name == 'Übersicht' or category_name == 'Prospekt':
                 continue
+            # if category_name != 'Ausverkauf' or category_name != 'Ballsport':
+            #     continue
             category_url = li.find('a').get('href') if li.find('a') else None
             print("Getting info for category: ", category_name)
             category_instance = Category(category_name, category_url)
@@ -95,7 +96,7 @@ class Scraper:
 
         articles = []
         for article_link in article_links:
-            articles.append(self._extract_data(article_link, category, soup))
+            articles.append(self._extract_data(article_link, category))
         return articles
 
 
@@ -114,51 +115,58 @@ class Scraper:
             article_links.extend([a.get('href') for a in soup.find_all('a', class_='Q_opE0', href=True)])
             has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
 
-    def _extract_data(self, article_link, category, soup):
+    def _extract_data(self, article_link, category):
         self.driver.get(self.base_url + article_link)
         html = self.driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
 
         price = soup.find('span', attrs={'data-testid': 'product-price'})
-        price = float(price.contents[0].text.replace(".–",''))
+        price = float(price.contents[0].text.replace(".–",'').replace("’", ""))
         name = soup.find('h1').contents[0].text
         try:
-            self.driver.find_element(by=By.CLASS_NAME, value='h-min').click()  # close cookie-banner
-            self.driver.find_element(by=By.ID, value="collapsible-description").click()  # open Description/Beschreibung
+            self.driver.find_element(by=By.CLASS_NAME, value='h-min').click()  # close cookie-banner # TODO do this only once?!
         except Exception as e:
-            print("not ofund")
+            print("cookie not found")
 
-
+        self.wait_until_element_located(By.ID, "collapsible-description").click()
+        # element.click()  # open Description/Beschreibung
         description = soup.find('div', attrs={'data-testid': 'text-clamp'}).contents[0].text
         description = description if description and description.strip() else None
         try:
-            self.driver.find_element(by=By.ID, value="collapsible-reviews").click() # open Reviews/Bewertungen
+            self.wait_until_element_located(By.ID, "collapsible-reviews").click()
+            self.wait_until_element_located(By.ID, "collapsible-reviews-controls").click()
+
+            # open Reviews/Bewertungen
         except Exception as e:
             print("collapsible reviews not found")
 
         try :
-            review_text = self.driver.find_element(by=By.XPATH, value=f"//*[@id='collapsible-reviews-controls']").text
+            review_text = self.wait_until_element_located(By.XPATH, f"//*[@id='collapsible-reviews-controls']").text
+
             if "Es liegen noch keine " in review_text:
                 rating = None
             elif "Es liegen nur wenige" in review_text:
-
-
-
-            # Es liegen nur wenige Bewertungen vor
                 rating_div = self.driver.find_element(by=By.XPATH, value=f"//*[@id='collapsible-reviews-controls']/*[1]/*[1]")
                 rating = float(rating_div.find_element(by=By.XPATH, value=".//div[3]").text)
-            else:
-                rating = float(self.driver.find_element(by=By.XPATH,
-                                         value=f"//div[contains(text(), 'Gesamtbewertung')]").parent.find_element(
-                    by=By.XPATH, value=f"./*[1]").find_element(by=By.CLASS_NAME, value="mr-4").text)
+            else: # there are reviews
+                rating =float(self.wait_until_element_located(By.XPATH, "//div[contains(text(), 'Gesamtbewertung')]").parent.find_element(by=By.XPATH, value=f"./*[1]").find_element(by=By.CLASS_NAME,
+                                                                                                      value="mr-4").text)
 
         except Exception as e:
-            print("issue with reviewers")
+            print("issue with reviewers: ",e )
             rating = None
-
-
-
         article_link = Article(name, price, description, category, rating, "interdiscount")
         return article_link
+
+    def wait_until_element_located(self, by, value, timeout=10):
+        wait = WebDriverWait(self.driver, timeout)
+        element = wait.until(EC.presence_of_element_located((by, value)))
+        # Use JavaScript to scroll the element into view but with some offset to avoid the fixed header
+        self.driver.execute_script("arguments[0].scrollIntoView();", element)
+        # time.sleep(0.5)  # wait for half a second
+        # Adjust the scroll by a fixed number of pixels down to account for the header
+        self.driver.execute_script("window.scrollBy(0, -150);")  # Adjust -150 to the height of your fixed header
+
+        return element
 
 
