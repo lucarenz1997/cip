@@ -1,6 +1,6 @@
 import csv
 import os
-import time
+
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -10,11 +10,6 @@ from selenium.webdriver.support.wait import WebDriverWait
 from src.model.article import Article
 from src.model.category import Category
 
-
-def processed_last_page(index, soup):
-    weiter_button =  soup.find('li', class_='l-Be8I')
-    parent = weiter_button.parent
-    return index-1 == int(parent.contents[len(parent)-2].text)
 
 class Scraper:
     upper_limit_per_category = 20
@@ -37,6 +32,11 @@ class Scraper:
     #     driver.quit()
     def quit_driver(self):
         self.driver.quit()
+
+    def processed_last_page(index, soup):
+        weiter_button = soup.find('li', class_='l-Be8I')
+        parent = weiter_button.parent
+        return index - 1 == int(parent.contents[len(parent) - 2].text)
     @property
     def base_url(self):
         return self._base_url
@@ -50,6 +50,7 @@ class Scraper:
                 result.append(self._scrape_category(category))
 
         self.write_to_csv(result)
+        self.quit_driver()
 
     def write_to_csv(self, result):
         data_dir = os.path.join(os.getcwd(), 'data')
@@ -104,7 +105,7 @@ class Scraper:
     def _loop_through_pages_and_extract_links(self, category, article_links, soup):
         has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
         index = 1
-        while has_next_page and len(article_links) < self.upper_limit_per_category and not processed_last_page(index, soup):
+        while has_next_page and len(article_links) < self.upper_limit_per_category and not self.processed_last_page(index, soup):
             index += 1
             self.driver.get(self.base_url + category.url + '?page=' + str(index)) #'&sort=price-desc' not allowed according to robots.txt
             # Update the BeautifulSoup object
