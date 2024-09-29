@@ -4,6 +4,8 @@ from selenium.webdriver.common.by import By
 
 from src.model.article import Article
 from src.model.category import Category
+import csv
+import os
 
 
 def processed_last_page(index, soup):
@@ -47,8 +49,23 @@ class Scraper:
         for category in categories:
             if category.url and category.name == "Ausverkauf":
                 result.append(self._scrape_category(category))
-        print(result)
 
+        self.write_to_csv(result)
+
+    def write_to_csv(self, result):
+        data_dir = os.path.join(os.getcwd(), 'data')
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+        csv_file_path = os.path.join(data_dir, 'results.csv')
+        # Write the results to a CSV file
+        with open(csv_file_path, 'w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(
+                ["Name", "Price", "Description", "Category", "Rating", "Source"])  # Write the header
+            for articles in result:
+                for article in articles:
+                    writer.writerow([article.name, article.price, article.description, article.category.name,
+                                     article.rating, article.source])
 
     # GET ALL CATEGORIES AND ITS CORRESPONDING URLS
     def _get_categories(self):
@@ -117,7 +134,7 @@ class Scraper:
         try:
             self.driver.find_element(by=By.ID, value="collapsible-reviews").click() # open Reviews/Bewertungen
         except Exception as e:
-            print("not ofund")
+            print("collapsible reviews not found")
 
         try :
             review_text = self.driver.find_element(by=By.XPATH, value=f"//*[@id='collapsible-reviews-controls']").text
@@ -136,7 +153,7 @@ class Scraper:
                     by=By.XPATH, value=f"./*[1]").find_element(by=By.CLASS_NAME, value="mr-4").text)
 
         except Exception as e:
-            print("not found")
+            print("issue with reviewers")
             rating = None
 
 
