@@ -1,56 +1,104 @@
 from bs4 import BeautifulSoup
+from selenium.common import TimeoutException, ElementNotInteractableException
+from selenium.webdriver.support.wait import WebDriverWait
 
 from src.model.category import Category
-from src.utils.requester_util import createRequest
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+
+def processed_last_page(index, soup):
+    weiter_button =  soup.find('li', class_='l-Be8I')
+    parent = weiter_button.parent
+    # x = parent[len(parent)-2]
+    return index-1 == int(parent.contents[len(parent)-2].text)
+
+
+
 
 class Scraper:
+    upper_limit_per_category = 150
     def __init__(self, base_url):
         self._base_url = base_url
+        self.driver = self.create_driver()
 
-    def get_soup(self):
-        return BeautifulSoup(createRequest(self.base_url), 'html.parser')
+    def create_driver(self):
+        driver = webdriver.Firefox()
+        return driver
 
+    def get_dynamic_soup(self, url = None):
+        if url:
+            self.driver.get(url)
+        html = self.driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+        return soup
+
+    # def quit_driver(self, driver):
+    #     driver.quit()
+    def quit_driver(self):
+        self.driver.quit()
     @property
     def base_url(self):
         return self._base_url
 
+    def scrape(self):
+        categories = self._get_categories()
+
+        for category in categories:
+            if category.url and category.name == "Ausverkauf":
+                self._scrape_category(category)
+
+
     # GET ALL CATEGORIES AND ITS CORRESPONDING URLS
-    def get_categories(self):
-        soup = self.get_soup()
-        navigation_bar = soup.find('header').find('div', id='nav-main').find('div', class_='nav-fill').find('div', class_='nav-progressive-content').findAll('a', href=True, class_='nav-a')
+    def _get_categories(self):
+        soup = self.get_dynamic_soup(self.base_url)
+        navigation_bar = soup.findAll('nav')
+        ul = navigation_bar[2].find('ul')
         categories = []
-        for category in navigation_bar:
-            category_name = category.get_text(strip=True)
-            category_url = category.get('href')
+        for li in ul.find_all('li'):
+            category_name = li.get_text(strip=True)
+            if category_name == 'Übersicht' or category_name == 'Prospekt':
+                continue
+            category_url = li.find('a').get('href') if li.find('a') else None
             print("Getting info for category: ", category_name)
             category_instance = Category(category_name, category_url)
             categories.append(category_instance)
-            # COMMENTED OUT DUE TO PERFORMANCE ISSUES (<30 minutes to scrape all its subcategories)
-            # If this category has subcategories, add them to the category_instance.
-            # subcategories = self.get_subcategories(category_url)
-            # for subcategory in subcategories:
-            #     category_instance.add_subcategory(subcategory)
         return categories
 
-    def get_subcategories(self, category_url):
-        print("Getting next subcategory")
-        # Get the HTML content of the category page
-        content = createRequest(self.base_url + category_url)
-        # Parse the HTML content
-        soup = BeautifulSoup(content, 'html.parser')
+    def _scrape_category(self, category):
+        self.driver.get(self.base_url + category.url + '?page=1')
+        html = self.driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
 
-        categories_list = soup.find_all('a', class_='octopus-pc-category-card-v2-category-link')
-        subcategories = []
-        for element in categories_list:
-            # Extract the name and URL of the subcategory
-            subcategory_name = element.get_text(strip=True)
-            subcategory_url = element.get('href')
-            # Create a Category instance for the subcategory
-            subcategory = Category(subcategory_name, subcategory_url)
-            subcategories.append(subcategory)
-            sub_subcategories = self.get_subcategories(subcategory_url)
-            for sub_subcategory in sub_subcategories:
-                subcategory.add_subcategory(sub_subcategory)
+        # extract links from first page
+        product_links = [a.get('href') for a in soup.find_all('a',class_='Q_opE0', href=True)]
 
-        return subcategories
+        self._loop_through_pages_and_extract_links(category,product_links, soup)
+        self._extract_data(product_links, category)
+
+
+    def _loop_through_pages_and_extract_links(self, category, product_links, soup):
+        has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
+        index = 1
+        while has_next_page and len(product_links) < self.upper_limit_per_category and not processed_last_page(index, soup):
+            index += 1
+            self.driver.get(self.base_url + category.url + '?page=' + str(index)) #'&sort=price-desc' not allowed according to robots.txt
+            # Update the BeautifulSoup object
+            html = self.driver.page_source
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # Scrape the links from the page
+            product_links.extend([a.get('href') for a in soup.find_all('a', class_='Q_opE0', href=True)])
+            has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
+
+    def _extract_data(self, product_links, category):
+        extracted_data = []
+
+
+
+        return extracted_data
+
+
 

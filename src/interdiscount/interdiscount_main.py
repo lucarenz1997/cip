@@ -2,14 +2,10 @@ from src.interdiscount.scraper import Scraper
 
 def main():
     # Instantiate the Scraper class
-    scraper = Scraper("http://www.amazon.de")
+    scraper = Scraper("http://www.interdiscount.ch")
+    result = scraper.scrape()
+    scraper.quit_driver()
 
-    all_categories = scraper.get_categories()
-    desired_categories = ['Electronics & Photo', 'Computers']
-    filtered_categories = list(filter(lambda category: category.name in desired_categories, all_categories))
-
-
-    print(scraper.base_url)
 
 
 if __name__ == "__main__":
