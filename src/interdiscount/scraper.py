@@ -15,7 +15,7 @@ from tkinter import messagebox
 
 
 class Scraper:
-    upper_limit_per_category = 20
+    max_pages_to_scrape = 1
 
     def select_categories(self, objects):
         selected_objects = []  # Declare this in the outer scope
@@ -69,7 +69,7 @@ class Scraper:
         self.driver.quit()
         print("driver quit")
 
-    def processed_last_page(index, soup):
+    def processed_last_page(self, index, soup):
         weiter_button = soup.find('li', class_='l-Be8I')
         parent = weiter_button.parent
         return index - 1 == int(parent.contents[len(parent) - 2].text)
@@ -136,7 +136,7 @@ class Scraper:
     def _extract_all_product_links_in_category(self, category, article_links, soup):
         has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
         index = 1
-        while has_next_page and len(article_links) < self.upper_limit_per_category and not self.processed_last_page(index, soup):
+        while has_next_page and index-1 < self.max_pages_to_scrape and not self.processed_last_page(index, soup):
             index += 1
             self.driver.get(self.base_url + category.url + '?page=' + str(index)) #'&sort=price-desc' not allowed according to robots.txt
             # Update the BeautifulSoup object
@@ -226,5 +226,3 @@ class Scraper:
             return element
         except Exception as e:
             print("Element does not exist", e)
-
-
