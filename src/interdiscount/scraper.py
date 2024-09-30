@@ -10,13 +10,49 @@ from selenium.webdriver.support.wait import WebDriverWait
 from src.model.article import Article
 from src.model.category import Category
 from src.utils.log_executor_decorator import log_execution
+import tkinter as tk
+from tkinter import messagebox
 
 
 class Scraper:
     upper_limit_per_category = 20
+
+    def select_categories(self, objects):
+        selected_objects = []  # Declare this in the outer scope
+        def on_ok():
+            nonlocal selected_objects  # Reference the outer scope
+            selected_indices = listbox.curselection()
+            selected_objects = [objects[i] for i in selected_indices]
+            root.destroy()  # Close the popup window
+
+        root = tk.Tk()
+        root.title("Select Objects")
+
+        # Create a Listbox with multiple selection mode
+        listbox = tk.Listbox(root, selectmode=tk.MULTIPLE, height=len(objects))
+        for obj in objects:
+            listbox.insert(tk.END, obj.name)
+
+        listbox.pack()
+
+        # Create an OK button
+        ok_button = tk.Button(root, text="OK", command=on_ok)
+        ok_button.pack()
+
+        root.mainloop()
+        return selected_objects  # Return the selected objects
+
+    def ask_interactive_mode(self):
+        root = tk.Tk()
+        root.withdraw()  # Hide the main window
+        result = messagebox.askquestion("Interactive Mode", "Do you want to scrape in interactive mode?",
+                                        icon='warning')
+        root.destroy()  # Destroy the main window
+        return result
     def __init__(self, base_url):
         self._base_url = base_url
         self.driver = self.create_driver()
+        self.interactive_mode = self.ask_interactive_mode() == 'yes'
 
     def create_driver(self):
         driver = webdriver.Firefox()
@@ -43,6 +79,9 @@ class Scraper:
 
     def scrape(self):
         categories = self._get_categories()
+
+        if self.interactive_mode:
+            categories = self.select_categories(categories)
         self._close_cookie_banner()
 
         data_dir = os.path.join(os.getcwd(), 'data')
