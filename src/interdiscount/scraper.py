@@ -57,34 +57,8 @@ class Scraper:
                 if category.url:
                     # get all urls for articles in category
                     self._scrape_category(category, writer)
-                        # self.write_to_csv(writer, article)
-
-        # result = []
-        # for category in categories:
-        #     if category.url:
-        #         #get all urls for articles in category
-        #         result.append(self._scrape_category(category))
-        # self.write_to_csv(result)
         self.quit_driver()
 
-    def write_to_csv(self, writer, article):
-        writer.writerow([article.name, article.price, article.description, article.category.name,
-                         article.rating, article.source])
-        # data_dir = os.path.join(os.getcwd(), 'data')
-        # if not os.path.exists(data_dir):
-        #     os.makedirs(data_dir)
-        # csv_file_path = os.path.join(data_dir, 'results.csv')
-        # # Write the results to a CSV file
-        # with open(csv_file_path, 'w', newline='',encoding='utf-8') as file:
-        #     writer = csv.writer(file)
-        #     writer.writerow(
-        #         ["Name", "Price", "Description", "Category", "Rating", "Source"])  # Write the header
-        #     for articles in result:
-        #         for article in articles:
-        #             writer.writerow([article.name, article.price, article.description, article.category.name,
-        #                              article.rating, article.source])
-
-    # GET ALL CATEGORIES AND ITS CORRESPONDING URLS
     @log_execution
     def _get_categories(self):
         soup = self.get_dynamic_soup(self.base_url)
@@ -114,7 +88,9 @@ class Scraper:
         self._extract_all_product_links_in_category(category, article_links, soup)
 
         for article_link in article_links:
-            self.write_to_csv(writer, self._extract_data(article_link, category))
+            article = self._extract_data(article_link, category)
+            writer.writerow([article.name, article.price, article.description, article.category.name,
+                             article.rating, article.source])
 
 
     @log_execution
