@@ -20,8 +20,8 @@ from src.model.category import Category
 # Scraper class for scraping articles from Interdiscount website.
 class Scraper:
     # Initialize batch size and max pages to scrape
-    _batch_size = 250
-    _max_pages_to_scrape = 32 # each page has 24 articles
+    _batch_size = 300
+    _max_pages_to_scrape = 40 # each page has 24 articles
 
     # Constructor to set base URL and initiate the WebDriver
     def __init__(self, base_url):
