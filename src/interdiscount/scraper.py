@@ -21,7 +21,7 @@ class Scraper:
     max_pages_to_scrape = 25
 
     def _get_all_brands(self):
-        self.wait_until_element_located(By.CLASS_NAME, '_2HIFC0', 'click') #open brands
+        self.wait_until_element_located(By.CLASS_NAME, '_2HIFC0', 'click')  # open brands
         # firstBrand = self.wait_until_element_located(By.CLASS_NAME, '_2hoAcL','get').text
         div_with_all_brands = self.wait_until_element_located(By.CLASS_NAME, '_1o-3dE',
                                                               'get')  # div containing all brands
@@ -126,6 +126,7 @@ class Scraper:
                                         icon='warning')
         root.destroy()  # Destroy the main window
         return result
+
     def __init__(self, base_url):
         self._base_url = base_url
         self.driver = self.create_driver()
@@ -135,7 +136,7 @@ class Scraper:
         driver = webdriver.Firefox()
         return driver
 
-    def get_dynamic_soup(self, url = None):
+    def get_dynamic_soup(self, url=None):
         if url:
             self.driver.get(url)
         html = self.driver.page_source
@@ -150,6 +151,7 @@ class Scraper:
         weiter_button = soup.find('li', class_='l-Be8I')
         parent = weiter_button.parent
         return index - 1 == int(parent.contents[len(parent) - 2].text)
+
     @property
     def base_url(self):
         return self._base_url
@@ -170,11 +172,13 @@ class Scraper:
             for category in categories:
                 if category.url:
                     # get all urls for articles in category
-                    self._scrape_category(category, writer)
+                    for article in self._scrape_category(category):
+                        writer.writerow([article.name, article.price, article.description, article.category.name,
+                                         article.rating, article.source])
         self.quit_driver()
 
     def _writeHeader(self, file):
-        writer = csv.writer(file)
+        writer = csv.writer(file, delimiter='|')
         writer.writerow(
             ["Name", "Price", "Description", "Category", "Rating", "Source"])  # Write the header
         return writer
@@ -197,7 +201,7 @@ class Scraper:
         return categories
 
     @log_execution
-    def _scrape_category(self, category, writer):
+    def _scrape_category(self, category):
         self.driver.get(self.base_url + category.url + '?page=1')
         html = self.driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
@@ -207,12 +211,9 @@ class Scraper:
         else:
             brands = []
 
-        article_links = self._extract_all_product_links_in_category(category, soup, brands)
         article_count = 0
-        for article_link in article_links:
-            article = self._extract_data(article_link, category)
-            writer.writerow([article.name, article.price, article.description, article.category.name,
-                             article.rating, article.source])
+        for article_link in self._extract_all_product_links_in_category(category, soup, brands):
+            yield self._extract_data(article_link, category)
 
             article_count += 1
             if article_count % self.batch_size == 0:
@@ -222,9 +223,11 @@ class Scraper:
         # Close and reopen the browser to free memory
         self.quit_driver()
         self.driver = self.create_driver()
+        self._close_cookie_banner()
 
         # Explicitly call garbage collector
         gc.collect()
+
     @log_execution
     def _extract_all_product_links_in_category(self, category, soup, brands):
         article_links = []
@@ -232,23 +235,22 @@ class Scraper:
         index = 0
         brands_url = ""
         if len(brands) != 0:
-            brands_url = "&brand="
-            brands_url += "+".join([str(brand.name)
-                                   .replace(" ", "%20")
-                                   .replace("'","%27") for brand in brands])
+            brands_url = "&brand=" + "+".join([str(brand.name)
+                                              .replace(" ", "%20")
+                                              .replace("'", "%27") for brand in brands])
 
         while has_next_page and index < self.max_pages_to_scrape and not self.processed_last_page(index, soup):
             index += 1
             url = self.base_url + category.url + '?page=' + str(index) + brands_url
-            self.driver.get(url) #'&sort=price-desc' not allowed according to robots.txt
+            self.driver.get(url)  # '&sort=price-desc' not allowed according to robots.txt
             # Update the BeautifulSoup object
             html = self.driver.page_source
             soup = BeautifulSoup(html, 'html.parser')
 
             # Scrape the links from the page
-            article_links.extend([a.get('href') for a in soup.find_all('a', class_='Q_opE0', href=True)])
+            for a in soup.find_all('a', class_='Q_opE0', href=True):
+                yield a.get('href')
             has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
-        return article_links
 
     def _extract_data(self, article_link, category):
         soup = self._setup_soup(article_link)
@@ -280,7 +282,7 @@ class Scraper:
         except Exception as e:
             print("collapsible reviews not found")
         try:
-            review_text = self.wait_until_element_located(By.XPATH, f"//*[@id='collapsible-reviews-controls']",'text')
+            review_text = self.wait_until_element_located(By.XPATH, f"//*[@id='collapsible-reviews-controls']", 'text')
             if "Es liegen noch keine Bewertungen vor" in review_text:
                 rating = None
             elif "Es liegen nur wenige" in review_text:
@@ -301,9 +303,8 @@ class Scraper:
 
     def _get_description(self, soup):
         self.wait_until_element_located(By.ID, "collapsible-description", action='click')
-        description = soup.find('div', attrs={'data-testid': 'text-clamp'}).contents[0].text
-        description = description if description and description.strip() else None
-        return description
+        description = soup.find('div', attrs={'data-testid': 'text-clamp'}).contents[0].text.replace("\n", " ")
+        return description if description and description.strip() else None
 
     def _close_cookie_banner(self):
         try:
@@ -317,7 +318,7 @@ class Scraper:
 
             wait = WebDriverWait(self.driver, 3)
             element = wait.until(EC.presence_of_element_located((by, value)))
-        # Use JavaScript to scroll the element into view but with some offset to avoid the fixed header
+            # Use JavaScript to scroll the element into view but with some offset to avoid the fixed header
             self.driver.execute_script("arguments[0].scrollIntoView();", element)
             # Adjust the scroll by a fixed number of pixels down to account for the header
             self.driver.execute_script("window.scrollBy(0, -150);")  # Adjust -150 to the height of your fixed header
@@ -326,9 +327,8 @@ class Scraper:
                 element.click()
             elif action == 'text':
                 return element.text
-            elif action== 'get':
+            elif action == 'get':
                 return element
             return element
         except Exception as e:
             print("Element does not exist", e)
-
