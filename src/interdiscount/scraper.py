@@ -9,6 +9,8 @@ from selenium.webdriver.support.wait import WebDriverWait
 import tkinter as tk
 from tkinter import messagebox
 import re
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.firefox.firefox_profile import FirefoxProfile
 
 from src.interdiscount.Brand import Brand
 from src.model.article import Article
@@ -18,8 +20,8 @@ from src.model.category import Category
 # Scraper class for scraping articles from Interdiscount website.
 class Scraper:
     # Initialize batch size and max pages to scrape
-    _batch_size = 100
-    _max_pages_to_scrape = 25
+    _batch_size = 250
+    _max_pages_to_scrape = 25 # each page has about 25 articles
 
     # Constructor to set base URL and initiate the WebDriver
     def __init__(self, base_url):
@@ -50,7 +52,13 @@ class Scraper:
 
     # Private method to create and initialize the WebDriver
     def _create_driver(self):
-        return webdriver.Firefox()
+        profile = FirefoxProfile()
+        profile.set_preference("permissions.default.image", 2)  # Disable images
+        options = Options()
+        options.profile = profile
+        options.headless = True  # Enable headless mode
+        driver = webdriver.Firefox(options=options)
+        return driver
 
     # Private method to gracefully close the WebDriver
     def _quit_driver(self):
@@ -98,7 +106,6 @@ class Scraper:
     def _release_memory(self):
         self._quit_driver()
         self._driver = self._create_driver()
-        self._close_cookie_banner()
         gc.collect()
 
     # Private method to get all brands available in the category
