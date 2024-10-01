@@ -1,6 +1,6 @@
 import csv
 import os
-
+import gc
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -17,6 +17,7 @@ import re
 
 
 class Scraper:
+    batch_size = 100  # Add a batch size to control memory usage
     max_pages_to_scrape = 25
 
     def _get_all_brands(self):
@@ -206,17 +207,24 @@ class Scraper:
         else:
             brands = []
 
-        # # extract links from first page
-        # article_links = [a.get('href') for a in soup.find_all('a',class_='Q_opE0', href=True)]
-
         article_links = self._extract_all_product_links_in_category(category, soup, brands)
-
+        article_count = 0
         for article_link in article_links:
             article = self._extract_data(article_link, category)
             writer.writerow([article.name, article.price, article.description, article.category.name,
                              article.rating, article.source])
 
+            article_count += 1
+            if article_count % self.batch_size == 0:
+                self._release_memory()
 
+    def _release_memory(self):
+        # Close and reopen the browser to free memory
+        self.quit_driver()
+        self.driver = self.create_driver()
+
+        # Explicitly call garbage collector
+        gc.collect()
     @log_execution
     def _extract_all_product_links_in_category(self, category, soup, brands):
         article_links = []
