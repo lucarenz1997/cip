@@ -272,4 +272,4 @@ class Scraper:
         data_dir = os.path.join(os.getcwd(), 'data')
         if not os.path.exists(data_dir):
             os.makedirs(data_dir)
-        return os.path.join(data_dir, 'results.csv')
+        return os.path.join(data_dir, 'raw.csv')
