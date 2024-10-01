@@ -7,18 +7,79 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 
+from src.interdiscount.Brand import Brand
 from src.model.article import Article
 from src.model.category import Category
 from src.utils.log_executor_decorator import log_execution
 import tkinter as tk
 from tkinter import messagebox
+import re
 
 
 class Scraper:
-    max_pages_to_scrape = 1
+    max_pages_to_scrape = 25
+
+    def _get_all_brands(self):
+        self.wait_until_element_located(By.CLASS_NAME, '_2HIFC0', 'click') #open brands
+        # firstBrand = self.wait_until_element_located(By.CLASS_NAME, '_2hoAcL','get').text
+        div_with_all_brands = self.wait_until_element_located(By.CLASS_NAME, '_1o-3dE',
+                                                              'get')  # div containing all brands
+        all_labels = div_with_all_brands.find_elements(By.TAG_NAME, value='label')
+        brands = []
+        for label in all_labels:  # label.text = 'Brand (123)'
+            match = re.match(r'(.*?)\s*\((\d+)\)', label.text)
+            if match:
+                brand_name = match.group(1).strip()
+                article_count = int(match.group(2))
+                brand = Brand(brand_name, article_count)
+                brands.append(brand)
+        # self.wait_until_element_located(By.CLASS_NAME, '_2HIFC0', 'click') # close brands dropdown
+        return brands
+
+    def select_brands(self, brands):
+        selected_objects = []  # Declare this in the outer scope
+
+        def on_ok():
+            nonlocal selected_objects  # Reference the outer scope
+            selected_indices = listbox.curselection()
+            selected_objects = [brands[i] for i in selected_indices]
+            root.destroy()  # Close the popup window
+
+        root = tk.Tk()
+        root.title("Select the brands that you want to scrape")
+
+        screen_height = root.winfo_screenheight()
+        window_height = int(screen_height * 0.4)  # Set the window height to 40% of the screen height
+        root.geometry(f"400x{window_height}")  # Set window size, width is fixed at 400
+
+        # Create a frame for the Listbox and Scrollbar
+        frame = tk.Frame(root)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        # Create a Scrollbar and associate it with the Listbox
+        scrollbar = tk.Scrollbar(frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Create a Listbox with multiple selection mode
+        listbox = tk.Listbox(frame, selectmode=tk.MULTIPLE, height=window_height // 20,  # Calculate appropriate height
+                             yscrollcommand=scrollbar.set)
+
+        for brand in brands:
+            listbox.insert(tk.END, f"{brand.name} ({brand.article_count} articles)")
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        scrollbar.config(command=listbox.yview)
+
+        # Create an OK button and pack it below the list
+        ok_button = tk.Button(root, text="OK", command=on_ok)
+        ok_button.pack(pady=10)  # Add padding to ensure visibility
+
+        root.mainloop()
+        return selected_objects  # Return the selected objects
 
     def select_categories(self, objects):
         selected_objects = []  # Declare this in the outer scope
+
         def on_ok():
             nonlocal selected_objects  # Reference the outer scope
             selected_indices = listbox.curselection()
@@ -26,18 +87,33 @@ class Scraper:
             root.destroy()  # Close the popup window
 
         root = tk.Tk()
-        root.title("Select Objects")
+        root.title("Select the categories that you want to scrape")
+
+        screen_height = root.winfo_screenheight()
+        window_height = int(screen_height * 0.4)  # Set the window height to 40% of the screen height
+        root.geometry(f"400x{window_height}")  # Set window size, width is fixed at 400
+
+        # Create a frame for the Listbox and Scrollbar
+        frame = tk.Frame(root)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        # Create a Scrollbar and associate it with the Listbox
+        scrollbar = tk.Scrollbar(frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         # Create a Listbox with multiple selection mode
-        listbox = tk.Listbox(root, selectmode=tk.MULTIPLE, height=len(objects))
+        listbox = tk.Listbox(frame, selectmode=tk.MULTIPLE, height=window_height // 20,  # Calculate appropriate height
+                             yscrollcommand=scrollbar.set)
+
         for obj in objects:
             listbox.insert(tk.END, obj.name)
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        listbox.pack()
+        scrollbar.config(command=listbox.yview)
 
-        # Create an OK button
+        # Create an OK button and pack it below the list
         ok_button = tk.Button(root, text="OK", command=on_ok)
-        ok_button.pack()
+        ok_button.pack(pady=10)  # Add padding to ensure visibility
 
         root.mainloop()
         return selected_objects  # Return the selected objects
@@ -82,21 +158,25 @@ class Scraper:
 
         if self.interactive_mode:
             categories = self.select_categories(categories)
-        self._close_cookie_banner()
 
+        self._close_cookie_banner()
         data_dir = os.path.join(os.getcwd(), 'data')
         if not os.path.exists(data_dir):
             os.makedirs(data_dir)
         csv_file_path = os.path.join(data_dir, 'results.csv')
         with open(csv_file_path, 'w', newline='', encoding='utf-8') as file:
-            writer = csv.writer(file)
-            writer.writerow(
-                ["Name", "Price", "Description", "Category", "Rating", "Source"])  # Write the header
+            writer = self._writeHeader(file)
             for category in categories:
                 if category.url:
                     # get all urls for articles in category
                     self._scrape_category(category, writer)
         self.quit_driver()
+
+    def _writeHeader(self, file):
+        writer = csv.writer(file)
+        writer.writerow(
+            ["Name", "Price", "Description", "Category", "Rating", "Source"])  # Write the header
+        return writer
 
     @log_execution
     def _get_categories(self):
@@ -121,10 +201,15 @@ class Scraper:
         html = self.driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
 
-        # extract links from first page
-        article_links = [a.get('href') for a in soup.find_all('a',class_='Q_opE0', href=True)]
+        if self.interactive_mode:
+            brands = self.select_brands(self._get_all_brands())
+        else:
+            brands = []
 
-        self._extract_all_product_links_in_category(category, article_links, soup)
+        # # extract links from first page
+        # article_links = [a.get('href') for a in soup.find_all('a',class_='Q_opE0', href=True)]
+
+        article_links = self._extract_all_product_links_in_category(category, soup, brands)
 
         for article_link in article_links:
             article = self._extract_data(article_link, category)
@@ -133,12 +218,21 @@ class Scraper:
 
 
     @log_execution
-    def _extract_all_product_links_in_category(self, category, article_links, soup):
+    def _extract_all_product_links_in_category(self, category, soup, brands):
+        article_links = []
         has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
-        index = 1
-        while has_next_page and index-1 < self.max_pages_to_scrape and not self.processed_last_page(index, soup):
+        index = 0
+        brands_url = ""
+        if len(brands) != 0:
+            brands_url = "&brand="
+            brands_url += "+".join([str(brand.name)
+                                   .replace(" ", "%20")
+                                   .replace("'","%27") for brand in brands])
+
+        while has_next_page and index < self.max_pages_to_scrape and not self.processed_last_page(index, soup):
             index += 1
-            self.driver.get(self.base_url + category.url + '?page=' + str(index)) #'&sort=price-desc' not allowed according to robots.txt
+            url = self.base_url + category.url + '?page=' + str(index) + brands_url
+            self.driver.get(url) #'&sort=price-desc' not allowed according to robots.txt
             # Update the BeautifulSoup object
             html = self.driver.page_source
             soup = BeautifulSoup(html, 'html.parser')
@@ -146,6 +240,7 @@ class Scraper:
             # Scrape the links from the page
             article_links.extend([a.get('href') for a in soup.find_all('a', class_='Q_opE0', href=True)])
             has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
+        return article_links
 
     def _extract_data(self, article_link, category):
         soup = self._setup_soup(article_link)
@@ -153,8 +248,8 @@ class Scraper:
         name = soup.find('h1').contents[0].text
         description = self._get_description(soup)
         rating = self._get_rating(soup)
-        article_link = Article(name, price, description, category, rating, "interdiscount")
-        return article_link
+        article = Article(name, price, description, category, rating, "interdiscount")
+        return article
 
     def _setup_soup(self, article_link):
         self.driver.get(self.base_url + article_link)
@@ -223,6 +318,9 @@ class Scraper:
                 element.click()
             elif action == 'text':
                 return element.text
+            elif action== 'get':
+                return element
             return element
         except Exception as e:
             print("Element does not exist", e)
+
