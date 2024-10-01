@@ -21,7 +21,7 @@ from src.model.category import Category
 class Scraper:
     # Initialize batch size and max pages to scrape
     _batch_size = 250
-    _max_pages_to_scrape = 25 # each page has about 25 articles
+    _max_pages_to_scrape = 32 # each page has 24 articles
 
     # Constructor to set base URL and initiate the WebDriver
     def __init__(self, base_url):
