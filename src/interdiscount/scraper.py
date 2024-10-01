@@ -45,7 +45,7 @@ class Scraper:
             for category in categories:
                 if category.url:
                     for article in self._scrape_category(category):
-                        writer.writerow([article.name, article.price, article.description,
+                        writer.writerow([article.name, article.brand, article.price, article.description,
                                          article.category.name, article.rating, article.source])
 
         self._quit_driver()  # Close the WebDriver
@@ -175,10 +175,18 @@ class Scraper:
     def _extract_data(self, article_link, category):
         soup = self._setup_soup(article_link)
         price = self._get_price(soup)
-        name = soup.find('h1').contents[0].text
+        full_string = soup.find('h1').contents[0].text.strip()
+
+        # Use regular expression to split at the first lowercase or mixed-case word
+        match = re.split(r'(?=\b[A-Z][a-z])', full_string, maxsplit=1)
+
+        # The first part before the split is the brand, the second part is the name
+        brand = match[0].strip()  # Brand: uppercase words
+        name = match[1].strip() if len(match) > 1 else ''  # Name: mixed case part, if it exists
+
         description = self._get_description(soup)
         rating = self._get_rating(soup)
-        return Article(name, price, description, category, rating, "interdiscount")
+        return Article(name, price, description, category, rating, brand,"interdiscount")
 
     def _setup_soup(self, article_link):
         self._driver.get(self._base_url + article_link)
@@ -243,7 +251,7 @@ class Scraper:
     # Private method to write the CSV header
     def _write_csv_header(self, file):
         writer = csv.writer(file, delimiter='|')
-        writer.writerow(["Name", "Price", "Description", "Category", "Rating", "Source"])
+        writer.writerow(["Name","Brand", "Price", "Description", "Category", "Rating", "Source"])
         return writer
 
     # Private method to handle element location and action execution
