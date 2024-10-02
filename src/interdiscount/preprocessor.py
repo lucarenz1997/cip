@@ -13,23 +13,26 @@ class PreProcessor:
         # Load the spaCy NLP model for NER (Named Entity Recognition)
         self._nlp = spacy.load("en_core_web_sm")
 
-    # Private function to extract the brand
-    def _extract_brand(self, name):
-        possible_brand = self._extract_uppercase_words(name)
-        doc = self._nlp(possible_brand)
-        brand = None
+    # Private function to extract the brand. For most cases, brands were somewhat easily extracted. For the other cases, NLP is used to extract the brand
+    def _extract_brand(self, name, brand):
+        if brand == '':
 
-        # Loop through entities identified by NER
-        for ent in doc.ents:
-            if ent.label_ == "ORG":  # 'ORG' label typically refers to organizations/brands
-                brand = ent.text
-                break
+            possible_brand = self._extract_uppercase_words(name)
+            doc = self._nlp(possible_brand)
+            brand = None
 
-        # If no brand is detected, fall back to a simple heuristic
-        if not brand:
-            brand = possible_brand
+            # Loop through entities identified by NER
+            for ent in doc.ents:
+                if ent.label_ == "ORG":  # 'ORG' label typically refers to organizations/brands
+                    brand = ent.text
+                    break
+
+            # If no brand is detected, fall back to a simple heuristic
+            if not brand:
+                brand = possible_brand
 
         return brand, name[len(brand):].strip()
+
 
     def _extract_uppercase_words(self, name):
         # Match all uppercase words until the first lowercase or mixed-case word is found
@@ -71,31 +74,35 @@ class PreProcessor:
         # Clean the name and description
         cleaned_name = self._clean_text(row['name'])
         description = self._clean_text(row['description'])
+        brand = self._clean_text(row['brand'])
+        category = self._clean_text(row['category'])
 
         # Extract the brand
-        brand, name = self._extract_brand(cleaned_name)
+        brand, name = self._extract_brand(cleaned_name, brand)
 
 
         # Translate name and description
         translated_name = self._translate_text(name)
         translated_description = self._translate_text(description)
+        tranlsate_category = self._translate_text(category)
 
         # Return processed data
         return pd.Series({
             'brand': brand,
             'name': translated_name,
-            'description': translated_description
+            'description': translated_description,
+            'category': tranlsate_category
         })
 
     # Public method to process the entire dataset
     def process(self):
         now = datetime.datetime.now()
         total_rows = len(self.df)
-        progress_interval = total_rows // 100  # Determine when to update the progress
+        progress_interval = total_rows // 100 if total_rows >= 100 else 1  # Determine when to update the progress
 
         # Apply the processing to each row of the DataFrame
         for idx, row in self.df.iterrows():
-            self.df.loc[idx, ['brand', 'name', 'description']] = self._process_row(row)
+            self.df.loc[idx, ['brand', 'name', 'description', 'category']] = self._process_row(row)
 
             # Show progress for every 1% of the total rows
             if idx % progress_interval == 0:

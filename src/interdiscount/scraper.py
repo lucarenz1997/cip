@@ -16,6 +16,7 @@ import time
 from src.interdiscount.model.brand import Brand
 from src.model.article import Article
 from src.model.category import Category
+import unicodedata
 
 
 # Scraper class for scraping articles from Interdiscount website.
@@ -29,7 +30,8 @@ class Scraper:
         self._interactive_mode = self._ask_interactive_mode() == 'yes'
         self._article_data = []  # Temporary list to store article data
         self._df = pd.DataFrame(
-            columns=["name", "price", "description", "category", "rating", "source"])  # DataFrame to hold all data
+            columns=["name", "price", "description", "category", "rating", "brand",
+                     "source"])  # DataFrame to hold all data
 
     def scrape(self):
         categories = self._get_categories()
@@ -49,6 +51,7 @@ class Scraper:
                         "description": article.description,
                         "category": article.category.name,
                         "rating": article.rating,
+                        "brand": article.brand,
                         "source": article.source
                     })
 
@@ -111,7 +114,8 @@ class Scraper:
 
         article_count = 0
         for article_link in self._extract_all_product_links_in_category(category, soup, brands):
-            yield self._extract_data(article_link, category)
+
+            yield self._extract_data(article_link, category, self._get_brand(article_link, brands))
             article_count += 1
             if article_count % 300 == 0:
                 self._release_memory()
@@ -179,13 +183,13 @@ class Scraper:
         except Exception as e:
             print("Cookie banner not found")
 
-    def _extract_data(self, article_link, category):
+    def _extract_data(self, article_link, category, brand):
         soup = self._setup_soup(article_link)
         price = self._get_price(soup)
         name = soup.find('h1').contents[0].text.strip('"')
         description = self._get_description(soup)
         rating = self._get_rating()
-        return Article(name, price, description, category, rating, "interdiscount")
+        return Article(name, price, description, category, rating, brand, "interdiscount")
 
     def _setup_soup(self, article_link):
         self._driver.get(self._base_url + article_link)
@@ -220,16 +224,16 @@ class Scraper:
 
         try:
             time.sleep(0.1)
-            review_text = self._wait_until_element_located(By.XPATH, f"//*[@id='collapsible-reviews-controls']",'text')
+            review_text = self._wait_until_element_located(By.XPATH, f"//*[@id='collapsible-reviews-controls']", 'text')
             if "Es liegen noch keine Bewertungen vor" in review_text:
                 rating = None
             elif "Es liegen nur wenige" in review_text:
                 rating_div = self._wait_until_element_located(By.XPATH,
-                                                             f"//*[@id='collapsible-reviews-controls']/*[1]/*[1]")
+                                                              f"//*[@id='collapsible-reviews-controls']/*[1]/*[1]")
                 rating = float(rating_div.find_element(by=By.XPATH, value=".//div[3]").text)
             else:  # there are reviews
                 rating = float(self._wait_until_element_located(By.XPATH,
-                                                               "//div[contains(text(), 'Gesamtbewertung')]").parent.find_element(
+                                                                "//div[contains(text(), 'Gesamtbewertung')]").parent.find_element(
                     by=By.XPATH, value=f"./*[1]").find_element(by=By.CLASS_NAME,
                                                                value="mr-4").text)
         except Exception as e:
@@ -283,3 +287,13 @@ class Scraper:
         if not os.path.exists(data_dir):
             os.makedirs(data_dir)
         return os.path.join(data_dir, 'raw.csv')
+
+    def _get_brand(self, article_link, brands):
+        article_link = unicodedata.normalize('NFKD', article_link.split("/")[3]).encode('ascii', 'ignore').decode(
+            'utf-8').replace(" ", "-")#get rid of umlaut, etc.
+
+        for brand in brands:
+            if str(article_link).startswith(brand.name.lower().replace(" ", "-")):  #
+                print(brand.name)
+                return brand.name
+        return None
