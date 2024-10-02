@@ -28,7 +28,7 @@ class Scraper:
         self._interactive_mode = self._ask_interactive_mode() == 'yes'
         self._article_data = []  # Temporary list to store article data
         self._df = pd.DataFrame(
-            columns=["Name", "Price", "Description", "Category", "Rating", "Source"])  # DataFrame to hold all data
+            columns=["name", "price", "description", "category", "rating", "source"])  # DataFrame to hold all data
 
     def scrape(self):
         categories = self._get_categories()
@@ -43,12 +43,12 @@ class Scraper:
                 for article in self._scrape_category(category):
                     # Add each article to the temporary list
                     self._article_data.append({
-                        "Name": article.name,
-                        "Price": article.price,
-                        "Description": article.description,
-                        "Category": article.category.name,
-                        "Rating": article.rating,
-                        "Source": article.source
+                        "name": article.name,
+                        "price": article.price,
+                        "description": article.description,
+                        "category": article.category.name,
+                        "rating": article.rating,
+                        "source": article.source
                     })
 
                     # If we've collected 100 articles, append them to the dataframe
@@ -66,7 +66,7 @@ class Scraper:
         self._df.to_csv(csv_file_path, sep='|', index=False)
 
         self._quit_driver()
-        print("done")
+        return self._df
 
     def _create_driver(self):
         profile = FirefoxProfile()
@@ -181,7 +181,7 @@ class Scraper:
     def _extract_data(self, article_link, category):
         soup = self._setup_soup(article_link)
         price = self._get_price(soup)
-        name = soup.find('h1').contents[0].text
+        name = soup.find('h1').contents[0].text.strip('"')
         description = self._get_description(soup)
         rating = self._get_rating(soup)
         return Article(name, price, description, category, rating, "interdiscount")
@@ -205,7 +205,7 @@ class Scraper:
     def _get_description(self, soup):
         self._wait_until_element_located(By.ID, "collapsible-description", 'click')
         description = soup.find('div', attrs={'data-testid': 'text-clamp'}).contents[0].text.replace("\n", " ")
-        return description.strip() if description else None
+        return description.strip('"') if description else None
 
     def _get_rating(self, soup):
         if not soup.find("button", text="Bewertungen"):
