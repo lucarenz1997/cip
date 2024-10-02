@@ -11,6 +11,7 @@ from tkinter import messagebox
 import re
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.firefox_profile import FirefoxProfile
+import time
 
 from src.interdiscount.model.brand import Brand
 from src.model.article import Article
@@ -183,7 +184,7 @@ class Scraper:
         price = self._get_price(soup)
         name = soup.find('h1').contents[0].text.strip('"')
         description = self._get_description(soup)
-        rating = self._get_rating(soup)
+        rating = self._get_rating()
         return Article(name, price, description, category, rating, "interdiscount")
 
     def _setup_soup(self, article_link):
@@ -207,18 +208,35 @@ class Scraper:
         description = soup.find('div', attrs={'data-testid': 'text-clamp'}).contents[0].text.replace("\n", " ")
         return description.strip('"') if description else None
 
-    def _get_rating(self, soup):
-        if not soup.find("button", text="Bewertungen"):
+    def _get_rating(self):
+        # articles to be reserved do not have this
+        if not self._wait_until_element_located(By.XPATH, "//button[text()='Bewertungen']"):
             return None
         try:
-            self._wait_until_element_located(By.ID, "collapsible-reviews", 'click')
-            review_text = self._wait_until_element_located(By.XPATH, "//*[@id='collapsible-reviews-controls']", 'text')
-            if "Es liegen noch keine Bewertungen vor" in review_text:
-                return None
-            return float(soup.find('div', class_='mr-4').text)
+            self._wait_until_element_located(By.ID, "collapsible-reviews", 'click')  # open Reviews/Bewertungen
+            self._wait_until_element_located(By.ID, "collapsible-reviews-controls")
         except Exception as e:
-            print(f"Error extracting rating: {e}")
-            return None
+            print("collapsible reviews not found")
+
+        try:
+            time.sleep(0.1)
+            review_text = self._wait_until_element_located(By.XPATH, f"//*[@id='collapsible-reviews-controls']",'text')
+            if "Es liegen noch keine Bewertungen vor" in review_text:
+                rating = None
+            elif "Es liegen nur wenige" in review_text:
+                rating_div = self._wait_until_element_located(By.XPATH,
+                                                             f"//*[@id='collapsible-reviews-controls']/*[1]/*[1]")
+                rating = float(rating_div.find_element(by=By.XPATH, value=".//div[3]").text)
+            else:  # there are reviews
+                rating = float(self._wait_until_element_located(By.XPATH,
+                                                               "//div[contains(text(), 'Gesamtbewertung')]").parent.find_element(
+                    by=By.XPATH, value=f"./*[1]").find_element(by=By.CLASS_NAME,
+                                                               value="mr-4").text)
+        except Exception as e:
+            print("Error caught: ", e)
+            rating = None
+        return rating
+
     def _extract_all_product_links_in_category(self, category, soup, brands):
         has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
         index = 0
