@@ -1,4 +1,4 @@
-import csv
+import pandas as pd
 import os
 import gc
 from bs4 import BeautifulSoup
@@ -19,38 +19,55 @@ from src.model.category import Category
 
 # Scraper class for scraping articles from Interdiscount website.
 class Scraper:
-    # Initialize batch size and max pages to scrape
-    _batch_size = 300
-    _max_pages_to_scrape = 40 # each page has 24 articles
+    _max_pages_to_scrape = 40  # each page has 24 articles
+    _save_interval = 200  # Accumulate data into the dataframe every 100 articles
 
-    # Constructor to set base URL and initiate the WebDriver
     def __init__(self, base_url):
         self._base_url = base_url
         self._driver = self._create_driver()
         self._interactive_mode = self._ask_interactive_mode() == 'yes'
+        self._article_data = []  # Temporary list to store article data
+        self._df = pd.DataFrame(
+            columns=["Name", "Price", "Description", "Category", "Rating", "Source"])  # DataFrame to hold all data
 
-    # Public method to start scraping
     def scrape(self):
-        # Retrieve and optionally select categories
         categories = self._get_categories()
         if self._interactive_mode:
             categories = self._select_categories(categories)
 
-        self._close_cookie_banner()  # Close cookie banner if present
+        self._close_cookie_banner()
+
+        # Iterate over selected categories and scrape articles
+        for category in categories:
+            if category.url:
+                for article in self._scrape_category(category):
+                    # Add each article to the temporary list
+                    self._article_data.append({
+                        "Name": article.name,
+                        "Price": article.price,
+                        "Description": article.description,
+                        "Category": article.category.name,
+                        "Rating": article.rating,
+                        "Source": article.source
+                    })
+
+                    # If we've collected 100 articles, append them to the dataframe
+                    if len(self._article_data) >= self._save_interval:
+                        print("writing into df")
+                        self._df = pd.concat([self._df, pd.DataFrame(self._article_data)], ignore_index=True)
+                        self._article_data.clear()  # Clear the list after appending
+
+        # Append any remaining data to the dataframe at the end of scraping
+        if self._article_data:
+            self._df = pd.concat([self._df, pd.DataFrame(self._article_data)], ignore_index=True)
+
+        # Save the dataframe to CSV at the end
         csv_file_path = self._create_data_directory_and_csv()
+        self._df.to_csv(csv_file_path, sep='|', index=False)
 
-        with open(csv_file_path, 'w', newline='', encoding='utf-8') as file:
-            writer = self._write_csv_header(file)
-            # Iterate over selected categories and scrape articles
-            for category in categories:
-                if category.url:
-                    for article in self._scrape_category(category):
-                        writer.writerow([article.name, article.price, article.description,
-                                         article.category.name, article.rating, article.source])
+        self._quit_driver()
+        print("done")
 
-        self._quit_driver()  # Close the WebDriver
-
-    # Private method to create and initialize the WebDriver
     def _create_driver(self):
         profile = FirefoxProfile()
         profile.set_preference("permissions.default.image", 2)  # Disable images
@@ -60,12 +77,10 @@ class Scraper:
         driver = webdriver.Firefox(options=options)
         return driver
 
-    # Private method to gracefully close the WebDriver
     def _quit_driver(self):
         self._driver.quit()
         print("Driver has been closed.")
 
-    # Private method to check if interactive mode is enabled
     def _ask_interactive_mode(self):
         root = tk.Tk()
         root.withdraw()
@@ -74,7 +89,6 @@ class Scraper:
         root.destroy()
         return result
 
-    # Private method to get categories from the base URL
     def _get_categories(self):
         soup = self._get_dynamic_soup(self._base_url)
         navigation_bar = soup.findAll('nav')
@@ -88,7 +102,6 @@ class Scraper:
             categories.append(Category(category_name, category_url))
         return categories
 
-    # Private method to scrape articles per category
     def _scrape_category(self, category):
         self._driver.get(self._base_url + category.url + '?page=1')
         soup = BeautifulSoup(self._driver.page_source, 'html.parser')
@@ -99,16 +112,14 @@ class Scraper:
         for article_link in self._extract_all_product_links_in_category(category, soup, brands):
             yield self._extract_data(article_link, category)
             article_count += 1
-            if article_count % self._batch_size == 0:
+            if article_count % 300 == 0:
                 self._release_memory()
 
-    # Private method to handle memory release and browser restart
     def _release_memory(self):
         self._quit_driver()
         self._driver = self._create_driver()
         gc.collect()
 
-    # Private method to get all brands available in the category
     def _get_all_brands(self):
         self._wait_until_element_located(By.CLASS_NAME, '_2HIFC0', 'click')  # Open brands dropdown
         div_with_all_brands = self._wait_until_element_located(By.CLASS_NAME, '_1o-3dE', 'get')  # Get brands container
@@ -122,15 +133,12 @@ class Scraper:
                 brands.append(Brand(brand_name, article_count))
         return brands
 
-    # Private method to handle the user selection of brands
     def _select_brands(self, brands):
         return self._show_selection_window(brands, "Select the brands that you want to scrape")
 
-    # Private method to handle the user selection of categories
     def _select_categories(self, categories):
         return self._show_selection_window(categories, "Select the categories that you want to scrape")
 
-    # Private method to display a selection window for brands/categories
     def _show_selection_window(self, objects, title):
         selected_objects = []
 
@@ -164,14 +172,12 @@ class Scraper:
         root.mainloop()
         return selected_objects
 
-    # Private method to close the cookie banner if it exists
     def _close_cookie_banner(self):
         try:
             self._driver.find_element(By.CLASS_NAME, 'h-min').click()
         except Exception as e:
             print("Cookie banner not found")
 
-    # Private method to extract data from a product page
     def _extract_data(self, article_link, category):
         soup = self._setup_soup(article_link)
         price = self._get_price(soup)
@@ -185,25 +191,22 @@ class Scraper:
         html = self._driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
         return soup
-    # Private method to create dynamic soup for a page
+
     def _get_dynamic_soup(self, url=None):
         if url:
             self._driver.get(url)
         html = self._driver.page_source
         return BeautifulSoup(html, 'html.parser')
 
-    # Private method to extract price from a product page
     def _get_price(self, soup):
         price = soup.find('span', attrs={'data-testid': 'product-price'})
         return float(price.contents[0].text.replace(".–", '').replace("’", ""))
 
-    # Private method to extract description from a product page
     def _get_description(self, soup):
         self._wait_until_element_located(By.ID, "collapsible-description", 'click')
         description = soup.find('div', attrs={'data-testid': 'text-clamp'}).contents[0].text.replace("\n", " ")
         return description.strip() if description else None
 
-    # Private method to extract rating from a product page
     def _get_rating(self, soup):
         if not soup.find("button", text="Bewertungen"):
             return None
@@ -216,8 +219,6 @@ class Scraper:
         except Exception as e:
             print(f"Error extracting rating: {e}")
             return None
-
-    # Private method to extract product links from a category page
     def _extract_all_product_links_in_category(self, category, soup, brands):
         has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
         index = 0
@@ -231,30 +232,22 @@ class Scraper:
             self._driver.get(url)
             soup = BeautifulSoup(self._driver.page_source, 'html.parser')
 
-            for a in soup.find_all('a',class_='Q_opE0', href=True): yield a.get('href')
+            for a in soup.find_all('a', class_='Q_opE0', href=True):
+                yield a.get('href')
             has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
 
-    # Private method to check if last page is processed
     def _processed_last_page(self, index, soup):
         weiter_button = soup.find('li', class_='l-Be8I')
         parent = weiter_button.parent
         return index - 1 == int(parent.contents[len(parent) - 2].text)
 
-    # Private method to write the CSV header
-    def _write_csv_header(self, file):
-        writer = csv.writer(file, delimiter='|')
-        writer.writerow(["Name", "Price", "Description", "Category", "Rating", "Source"])
-        return writer
-
-    # Private method to handle element location and action execution
     def _wait_until_element_located(self, by, value, action=None):
         try:
             wait = WebDriverWait(self._driver, 3)
             element = wait.until(EC.presence_of_element_located((by, value)))
 
-            # Scroll the element into view and adjust for fixed header
             self._driver.execute_script("arguments[0].scrollIntoView();", element)
-            self._driver.execute_script("window.scrollBy(0, -150);")  # Adjust for header height
+            self._driver.execute_script("window.scrollBy(0, -150);")
 
             if action == 'click':
                 element.click()
@@ -267,7 +260,6 @@ class Scraper:
             print(f"Element {value} not found: {e}")
             return None
 
-    # Private method to create a data directory and prepare the CSV file path
     def _create_data_directory_and_csv(self):
         data_dir = os.path.join(os.getcwd(), 'data')
         if not os.path.exists(data_dir):
