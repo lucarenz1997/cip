@@ -12,7 +12,7 @@ import re
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.firefox_profile import FirefoxProfile
 
-from src.interdiscount.Brand import Brand
+from src.interdiscount.model.brand import Brand
 from src.model.article import Article
 from src.model.category import Category
 

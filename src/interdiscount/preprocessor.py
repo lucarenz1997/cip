@@ -90,13 +90,21 @@ class PreProcessor:
     # Public method to process the entire dataset
     def process(self):
         now = datetime.datetime.now()
-        # Apply the processing to each row of the DataFrame
-        self.df[['brand', 'name', 'description']] = self.df.apply(self._process_row, axis=1)
-        self.df.to_csv("/data/preprocessed.csv", index=False, sep='|')
-        after = datetime.datetime.now()
-        print(str(now) + str(after) + "     " + str(after-now))
+        total_rows = len(self.df)
+        progress_interval = total_rows // 100  # Determine when to update the progress
 
-# Usage example:
-# processor = PreProcessor("myfile.csv")
-# processed_df = processor.process()
-# processed_df.to_csv("processed_file.csv", index=False)  # Save the processed file if needed
+        # Apply the processing to each row of the DataFrame
+        for idx, row in self.df.iterrows():
+            self.df.loc[idx, ['brand', 'name', 'description']] = self._process_row(row)
+
+            # Show progress for every 1% of the total rows
+            if idx % progress_interval == 0:
+                percentage = (idx / total_rows) * 100
+                print(f"Progress: {percentage:.2f}%")
+
+        # Save the processed file
+        self.df.to_csv("/data/preprocessed.csv", index=False, sep='|')
+
+        # Time tracking
+        after = datetime.datetime.now()
+        print(f"Started: {now}, Ended: {after}, Duration: {after - now}")
