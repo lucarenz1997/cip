@@ -103,7 +103,7 @@ class PreProcessor:
                 print(f"Progress: {percentage:.2f}%")
 
         # Save the processed file
-        self.df.to_csv("/data/preprocessed.csv", index=False, sep='|')
+        self.df.to_csv("preprocessed.csv", index=False, sep='|')
 
         # Time tracking
         after = datetime.datetime.now()
