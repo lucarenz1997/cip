@@ -7,7 +7,7 @@ from selenium.webdriver.firefox.options import Options
 from src.utils.log_executor_decorator import log_execution
 
 
-# Scraper class for scraping articles from Interdiscount website.
+# Scraper class for scraping articles from Galaxus website.
 class Scraper:
     _max_pages_to_scrape = 40  # each page has 24 articles
     _save_interval = 200  # Accumulate data into the dataframe every 100 articles
@@ -42,8 +42,15 @@ class Scraper:
     def _get_categories(self):
         soup = self._get_dynamic_soup(self._base_url)
         navigation_bar = soup.findAll('li', class_='sc-ba0f659-0')
+        categories = []
+        for li in navigation_bar:
+            a_tag = li.find('a')  # Find the 'a' tag inside the 'li' tag
+            if a_tag:  # Check if 'a' tag is not None
+                text = a_tag.text  # Get the text of the 'a' tag
+                href = a_tag.get('href')  # Get the 'href' attribute of the 'a' tag
+                categories.append((text, href))
 
-        print("hoi")
+        return categories
 
     def _get_dynamic_soup(self, url=None):
         if url:
