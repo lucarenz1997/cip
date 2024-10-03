@@ -1,5 +1,5 @@
 import pandas as pd
-import os
+
 import gc
 from bs4 import BeautifulSoup
 from selenium import webdriver

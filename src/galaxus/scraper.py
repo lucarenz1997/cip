@@ -1,4 +1,5 @@
 import pandas as pd
+import os
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.firefox.firefox_profile import FirefoxProfile
