@@ -38,17 +38,18 @@ class Scraper:
         self._driver.quit()
         print("Driver has been closed.")
 
-
     def _get_categories(self):
         soup = self._get_dynamic_soup(self._base_url)
-        navigation_bar = soup.findAll('li', class_='sc-ba0f659-0')
+        navigation_bar = soup.findAll('li', class_='sc-ba0f659-0')  # Adjust class based on actual HTML
         categories = []
+
         for li in navigation_bar:
             a_tag = li.find('a')  # Find the 'a' tag inside the 'li' tag
             if a_tag:  # Check if 'a' tag is not None
-                text = a_tag.text  # Get the text of the 'a' tag
+                text = a_tag.text.strip()  # Get the text of the 'a' tag, removing extra whitespace
                 href = a_tag.get('href')  # Get the 'href' attribute of the 'a' tag
-                categories.append((text, href))
+                if text and href:  # Ensure both text and href are valid
+                    categories.append((text, href))  # Append as tuple (category name, URL)
 
         return categories
 
@@ -57,3 +58,4 @@ class Scraper:
             self._driver.get(url)
         html = self._driver.page_source
         return BeautifulSoup(html, 'html.parser')
+
