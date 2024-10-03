@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 
 import gc
@@ -260,7 +262,7 @@ class Scraper:
         return rating
 
     def _extract_all_product_links_in_category(self, category, soup, brands):
-        has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
+        has_next_page = soup.findAll('svg', class_="iconVariantB")
         index = 0
         brands_url = ""
         if brands:
@@ -277,7 +279,7 @@ class Scraper:
             has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
 
     def _processed_last_page(self, index, soup):
-        weiter_button = soup.find('li', class_='l-Be8I')
+        weiter_button = soup.find('li', class_='l-Be8I') #fixed after update "
         parent = weiter_button.parent
         return index - 1 == int(parent.contents[len(parent) - 2].text)
 
