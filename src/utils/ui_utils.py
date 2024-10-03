@@ -15,7 +15,6 @@ class UIUtils:
     @staticmethod
     def show_selection_window(objects, title):
         selected_objects = []
-
         def on_ok():
             nonlocal selected_objects
             selected_indices = listbox.curselection()

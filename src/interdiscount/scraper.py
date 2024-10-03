@@ -4,10 +4,7 @@ import time
 import pandas as pd
 import unicodedata
 from bs4 import BeautifulSoup
-from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.firefox.firefox_profile import FirefoxProfile
-from selenium.webdriver.firefox.options import Options
 
 from src.model.article import Article
 from src.model.base_scraper import BaseScraper
@@ -29,7 +26,9 @@ class Scraper(BaseScraper):
 
     @log_execution
     def scrape(self):
-        categories = self._get_categories()
+        self._driver.get(self._base_url)
+        soup = BeautifulSoup(self._driver.page_source, 'html.parser')
+        categories = self._get_categories(soup)
         if self._interactive_mode:
             categories = self._select_categories(categories)
 
@@ -68,8 +67,7 @@ class Scraper(BaseScraper):
         return self._df
 
     @log_execution
-    def _get_categories(self):
-        soup = self._get_dynamic_soup(self._base_url)
+    def _get_categories(self, soup):
         navigation_bar = soup.findAll('nav')
         ul = navigation_bar[2].find('ul')
         categories = []
@@ -84,12 +82,10 @@ class Scraper(BaseScraper):
     @log_execution
     def _scrape_category(self, category):
         self._driver.get(self._base_url + category.url + '?page=1')
-        soup = BeautifulSoup(self._driver.page_source, 'html.parser')
-
         brands = self._select_brands(self._get_all_brands()) if self._interactive_mode else []
 
         article_count = 0
-        for article_link in self._extract_all_product_links_in_category(category, soup, brands):
+        for article_link in self._extract_all_product_links_in_category(category, brands):
 
             yield self._extract_data(article_link, category, self._get_brand(article_link, brands))
             article_count += 1
@@ -100,29 +96,18 @@ class Scraper(BaseScraper):
     def _get_all_brands(self):
         self._wait_until_element_located(By.XPATH, "//button[.//span[text()='Marken']]",
                                          'click')  # Open brands dropdown
+        time.sleep(0.2)
+        soup = BeautifulSoup(self._driver.page_source, 'html.parser')
+        all_brands_list = soup.findAll("fieldset")[0].contents[2]
 
-        # Find all the options within the listbox
-        parent_div = self._wait_until_element_located(
-            By.XPATH, "//div[@aria-label='Optionen wählen']", 'get')
-
-        # Iterate through each option to get the name and number
-        # Find all child divs within the parent div
-        option_divs = parent_div.find_elements(By.XPATH, ".//div[@role='option']")
-
-        # Iterate over each child div and extract the name and number
         brands = []
-        for option in option_divs:
-            try:
-                name = option.find_element(By.XPATH,
-                                           ".//span[@class='cursor-pointer select-none pl-2 text-base text-brand-secondary']").text.strip()
+        for brand_element in all_brands_list.findAll('div')[::3]: #we have always 3 divs per entry
 
-                match = re.match(r'(.*?)\s*\((\d+)\)', name)
-                if match:
-                    brand_name = match.group(1).strip()
-                    article_count = int(match.group(2))
-                    brands.append(Brand(brand_name, article_count))
-            except Exception as e:
-                print(f"Error extracting data: {e}")
+            match = re.match(r'(.*?)\s*\((\d+)\)', brand_element.text) # Brand (# of articles))
+            if match:
+                brand_name = match.group(1).strip()
+                article_count = int(match.group(2))
+                brands.append(Brand(brand_name, article_count))
 
         return brands
 
@@ -191,14 +176,17 @@ class Scraper(BaseScraper):
             rating = None
         return rating
 
-    def _extract_all_product_links_in_category(self, category, soup, brands):
-        has_next_page = soup.findAll('svg', class_="iconVariantB")
-        index = 0
+    def _extract_all_product_links_in_category(self, category, brands):
         brands_url = ""
         if brands:
-            brands_url = "&brand=" + "+".join([re.sub(r"[' ]", "%20", brand.name) for brand in brands])
+            brands_url = "&brand=" + "+".join([brand.name.replace(" ", "%2520") for brand in brands]) # brand names with "," etc do not work, sorry
 
-        while has_next_page and index < self._max_pages_to_scrape and not self._processed_last_page(index, soup):
+        self._driver.get(self._base_url + category.url + f'?page=1{brands_url}')
+        soup = BeautifulSoup(self._driver.page_source, 'html.parser')
+
+        index = 1
+        last_page_processed = False
+        while index <= self._max_pages_to_scrape and not last_page_processed:
             index += 1
             url = self._base_url + category.url + f'?page={index}{brands_url}'
             self._driver.get(url)
@@ -206,7 +194,12 @@ class Scraper(BaseScraper):
 
             for a in soup.find_all('a', class_='Q_opE0', href=True):
                 yield a.get('href')
-            has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
+
+            disabled_buttons = soup.findAll('button', {'disabled': True})
+            for button in disabled_buttons:
+                if "Weiter" in button.text:
+                    last_page_processed = True
+
 
     def _processed_last_page(self, index, soup):
         weiter_button = soup.find('li', class_='l-Be8I')  # fixed after update "

@@ -1,3 +1,5 @@
+from bs4 import BeautifulSoup
+
 from src.model.base_scraper import BaseScraper
 from src.utils.log_executor_decorator import log_execution
 
@@ -17,7 +19,7 @@ class Scraper(BaseScraper):
 
     def _get_categories(self):
         print(f"Fetching categories from {self._base_url}")
-        soup = self._get_dynamic_soup(self._base_url)
+        soup = BeautifulSoup(self._driver.page_source, 'html.parser')
 
         # Debugging: Print the HTML to check if the page was fetched correctly
         print(soup.prettify())

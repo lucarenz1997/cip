@@ -25,12 +25,6 @@ class BaseScraper(ABC):
         """
         pass
 
-    def _get_dynamic_soup(self, url=None):
-        if url:
-            self._driver.get(url)
-        html = self._driver.page_source
-        return BeautifulSoup(html, 'html.parser')
-
     def _wait_until_element_located(self, by, value, action=None):
         try:
             wait = WebDriverWait(self._driver, 3)
@@ -58,12 +52,6 @@ class BaseScraper(ABC):
     def _quit_driver(self):
         self._driver.quit()
         print("Driver has been closed.")
-
-    def get_dynamic_soup(self, url=None):
-        if url:
-            self._driver.get(url)
-        html = self._driver.page_source
-        return BeautifulSoup(html, 'html.parser')
 
     def save_to_csv(self, df, file_name, separator='|', index=False):
         data_dir = os.path.join(os.getcwd(), 'data')
