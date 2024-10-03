@@ -129,16 +129,31 @@ class Scraper:
         gc.collect()
 
     def _get_all_brands(self):
-        self._wait_until_element_located(By.CLASS_NAME, '_2HIFC0', 'click')  # Open brands dropdown
-        div_with_all_brands = self._wait_until_element_located(By.CLASS_NAME, '_1o-3dE', 'get')  # Get brands container
-        all_labels = div_with_all_brands.find_elements(By.TAG_NAME, value='label')
+        self._wait_until_element_located(By.XPATH, "//button[.//span[text()='Marken']]", 'click')  # Open brands dropdown
+
+        # Find all the options within the listbox
+        parent_div = self._wait_until_element_located(
+            By.XPATH, "//div[@aria-label='Optionen wählen']",'get')
+
+        # Iterate through each option to get the name and number
+        # Find all child divs within the parent div
+        option_divs = parent_div.find_elements(By.XPATH, ".//div[@role='option']")
+
+        # Iterate over each child div and extract the name and number
         brands = []
-        for label in all_labels:
-            match = re.match(r'(.*?)\s*\((\d+)\)', label.text)
-            if match:
-                brand_name = match.group(1).strip()
-                article_count = int(match.group(2))
-                brands.append(Brand(brand_name, article_count))
+        for option in option_divs:
+            try:
+                name = option.find_element(By.XPATH,
+                                           ".//span[@class='cursor-pointer select-none pl-2 text-base text-brand-secondary']").text.strip()
+
+                match = re.match(r'(.*?)\s*\((\d+)\)', name)
+                if match:
+                    brand_name = match.group(1).strip()
+                    article_count = int(match.group(2))
+                    brands.append(Brand(brand_name, article_count))
+            except Exception as e:
+                print(f"Error extracting data: {e}")
+
         return brands
 
     def _select_brands(self, brands):
