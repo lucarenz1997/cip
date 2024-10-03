@@ -67,15 +67,7 @@ class Scraper(BaseScraper):
         self._quit_driver()
         return self._df
 
-    def _create_driver(self):
-        profile = FirefoxProfile()
-        profile.set_preference("permissions.default.image", 2)  # Disable images
-        options = Options()
-        options.profile = profile
-        options.headless = True  # Enable headless mode
-        driver = webdriver.Firefox(options=options)
-        return driver
-
+    @log_execution
     def _get_categories(self):
         soup = self._get_dynamic_soup(self._base_url)
         navigation_bar = soup.findAll('nav')
@@ -89,6 +81,7 @@ class Scraper(BaseScraper):
             categories.append(Category(category_name, category_url))
         return categories
 
+    @log_execution
     def _scrape_category(self, category):
         self._driver.get(self._base_url + category.url + '?page=1')
         soup = BeautifulSoup(self._driver.page_source, 'html.parser')
@@ -103,6 +96,7 @@ class Scraper(BaseScraper):
             if article_count % 300 == 0:
                 self._release_memory()
 
+    @log_execution
     def _get_all_brands(self):
         self._wait_until_element_located(By.XPATH, "//button[.//span[text()='Marken']]",
                                          'click')  # Open brands dropdown
@@ -158,11 +152,6 @@ class Scraper(BaseScraper):
         soup = BeautifulSoup(html, 'html.parser')
         return soup
 
-    def _get_dynamic_soup(self, url=None):
-        if url:
-            self._driver.get(url)
-        html = self._driver.page_source
-        return BeautifulSoup(html, 'html.parser')
 
     def _get_price(self, soup):
         price = soup.find('span', attrs={'data-testid': 'product-price'})
