@@ -4,10 +4,13 @@ import pandas as pd
 import re
 import spacy
 from deep_translator import GoogleTranslator
-class PreProcessor:
+
+from src.model.base_preprocessor import BasePreProcessor
+
+
+class PreProcessor(BasePreProcessor):
     def __init__(self, file_path):
-        # Load the dataset from the given file path
-        self.df = pd.read_csv(file_path, delimiter='|')
+        super().__init__(file_path)
         # Initialize the translator
         self._translator = GoogleTranslator(source='de', target='en')
         # Load the spaCy NLP model for NER (Named Entity Recognition)
