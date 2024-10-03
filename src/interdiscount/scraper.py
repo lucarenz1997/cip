@@ -13,7 +13,7 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.firefox_profile import FirefoxProfile
 import time
 
-from src.interdiscount.model.brand import Brand
+from src.model.brand import Brand
 from src.model.article import Article
 from src.model.category import Category
 import unicodedata
