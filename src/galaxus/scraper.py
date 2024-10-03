@@ -1,4 +1,5 @@
 import pandas as pd
+from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.firefox.firefox_profile import FirefoxProfile
 from selenium.webdriver.firefox.options import Options
@@ -14,7 +15,6 @@ class Scraper:
     def __init__(self, base_url):
         self._base_url = base_url
         self._driver = self._create_driver()
-        self._interactive_mode = self._ask_interactive_mode() == 'yes'
         self._article_data = []  # Temporary list to store article data
         self._df = pd.DataFrame(
             columns=["name", "price", "description", "category", "rating", "brand",
@@ -44,3 +44,9 @@ class Scraper:
         navigation_bar = soup.findAll('li', class_='sc-ba0f659-0')
 
         print("hoi")
+
+    def _get_dynamic_soup(self, url=None):
+        if url:
+            self._driver.get(url)
+        html = self._driver.page_source
+        return BeautifulSoup(html, 'html.parser')
