@@ -1,41 +1,31 @@
-import os
+import re
+import time
 
 import pandas as pd
-
-import gc
+import unicodedata
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.wait import WebDriverWait
-import tkinter as tk
-from tkinter import messagebox
-import re
-from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.firefox_profile import FirefoxProfile
-import time
+from selenium.webdriver.firefox.options import Options
 
-from src.model.brand import Brand
 from src.model.article import Article
+from src.model.base_scraper import BaseScraper
+from src.model.brand import Brand
 from src.model.category import Category
-import unicodedata
-
 from src.utils.log_executor_decorator import log_execution
+from src.utils.ui_utils import UIUtils
 
 
 # Scraper class for scraping articles from Interdiscount website.
-class Scraper:
+class Scraper(BaseScraper):
     _max_pages_to_scrape = 40  # each page has 24 articles
     _save_interval = 200  # Accumulate data into the dataframe every 100 articles
 
     def __init__(self, base_url):
-        self._base_url = base_url
-        self._driver = self._create_driver()
-        self._interactive_mode = self._ask_interactive_mode() == 'yes'
+        super().__init__(base_url)
+        self._interactive_mode = UIUtils.ask_interactive_mode() == 'yes'
         self._article_data = []  # Temporary list to store article data
-        self._df = pd.DataFrame(
-            columns=["name", "price", "description", "category", "rating", "brand",
-                     "source"])  # DataFrame to hold all data
 
     @log_execution
     def scrape(self):
@@ -71,7 +61,7 @@ class Scraper:
             self._df = pd.concat([self._df, pd.DataFrame(self._article_data)], ignore_index=True)
 
         # Save the dataframe to CSV at the end
-        csv_file_path = self._create_data_directory_and_csv()
+        csv_file_path = self.save_to_csv(self._df, 'raw.csv')
         self._df.to_csv(csv_file_path, sep='|', index=False)
 
         self._quit_driver()
@@ -86,18 +76,6 @@ class Scraper:
         driver = webdriver.Firefox(options=options)
         return driver
 
-    def _quit_driver(self):
-        self._driver.quit()
-        print("Driver has been closed.")
-
-    def _ask_interactive_mode(self):
-        root = tk.Tk()
-        root.withdraw()
-        result = messagebox.askquestion("Interactive Mode", "Do you want to scrape in interactive mode?",
-                                        icon='warning')
-        root.destroy()
-        return result
-
     def _get_categories(self):
         soup = self._get_dynamic_soup(self._base_url)
         navigation_bar = soup.findAll('nav')
@@ -105,7 +83,7 @@ class Scraper:
         categories = []
         for li in ul.find_all('li'):
             category_name = li.get_text(strip=True)
-            if category_name in ['Übersicht', 'Prospekt']: #has no articles. hence, we ignore them
+            if category_name in ['Übersicht', 'Prospekt']:  # has no articles. hence, we ignore them
                 continue
             category_url = li.find('a').get('href') if li.find('a') else None
             categories.append(Category(category_name, category_url))
@@ -125,17 +103,13 @@ class Scraper:
             if article_count % 300 == 0:
                 self._release_memory()
 
-    def _release_memory(self):
-        self._quit_driver()
-        self._driver = self._create_driver()
-        gc.collect()
-
     def _get_all_brands(self):
-        self._wait_until_element_located(By.XPATH, "//button[.//span[text()='Marken']]", 'click')  # Open brands dropdown
+        self._wait_until_element_located(By.XPATH, "//button[.//span[text()='Marken']]",
+                                         'click')  # Open brands dropdown
 
         # Find all the options within the listbox
         parent_div = self._wait_until_element_located(
-            By.XPATH, "//div[@aria-label='Optionen wählen']",'get')
+            By.XPATH, "//div[@aria-label='Optionen wählen']", 'get')
 
         # Iterate through each option to get the name and number
         # Find all child divs within the parent div
@@ -159,43 +133,10 @@ class Scraper:
         return brands
 
     def _select_brands(self, brands):
-        return self._show_selection_window(brands, "Select the brands that you want to scrape")
+        return UIUtils.show_selection_window(brands, "Select the brands that you want to scrape")
 
     def _select_categories(self, categories):
-        return self._show_selection_window(categories, "Select the categories that you want to scrape")
-
-    def _show_selection_window(self, objects, title):
-        selected_objects = []
-
-        def on_ok():
-            nonlocal selected_objects
-            selected_indices = listbox.curselection()
-            selected_objects = [objects[i] for i in selected_indices]
-            root.destroy()
-
-        root = tk.Tk()
-        root.title(title)
-        window_height = int(root.winfo_screenheight() * 0.4)
-        root.geometry(f"400x{window_height}")
-
-        frame = tk.Frame(root)
-        frame.pack(fill=tk.BOTH, expand=True)
-
-        scrollbar = tk.Scrollbar(frame)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        listbox = tk.Listbox(frame, selectmode=tk.MULTIPLE, height=window_height // 20, yscrollcommand=scrollbar.set)
-        for obj in objects:
-            listbox.insert(tk.END, f"{obj.name} ({obj.article_count})" if hasattr(obj, 'article_count') else obj.name)
-        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        scrollbar.config(command=listbox.yview)
-
-        ok_button = tk.Button(root, text="OK", command=on_ok)
-        ok_button.pack(pady=10)
-
-        root.mainloop()
-        return selected_objects
+        return UIUtils.show_selection_window(categories, "Select the categories that you want to scrape")
 
     def _close_cookie_banner(self):
         try:
@@ -279,38 +220,13 @@ class Scraper:
             has_next_page = soup.find(lambda tag: tag.name == 'span' and tag.get_text() == 'Weiter')
 
     def _processed_last_page(self, index, soup):
-        weiter_button = soup.find('li', class_='l-Be8I') #fixed after update "
+        weiter_button = soup.find('li', class_='l-Be8I')  # fixed after update "
         parent = weiter_button.parent
         return index - 1 == int(parent.contents[len(parent) - 2].text)
 
-    def _wait_until_element_located(self, by, value, action=None):
-        try:
-            wait = WebDriverWait(self._driver, 3)
-            element = wait.until(EC.presence_of_element_located((by, value)))
-
-            self._driver.execute_script("arguments[0].scrollIntoView();", element)
-            self._driver.execute_script("window.scrollBy(0, -150);")
-
-            if action == 'click':
-                element.click()
-            elif action == 'text':
-                return element.text
-            elif action == 'get':
-                return element
-            return element
-        except Exception as e:
-            print(f"Element {value} not found: {e}")
-            return None
-
-    def _create_data_directory_and_csv(self):
-        data_dir = os.path.join(os.getcwd(), 'data')
-        if not os.path.exists(data_dir):
-            os.makedirs(data_dir)
-        return os.path.join(data_dir, 'raw.csv')
-
     def _get_brand(self, article_link, brands):
         article_link = unicodedata.normalize('NFKD', article_link.split("/")[3]).encode('ascii', 'ignore').decode(
-            'utf-8').replace(" ", "-")#get rid of umlaut, etc.
+            'utf-8').replace(" ", "-")  # get rid of umlaut, etc.
 
         for brand in brands:
             if str(article_link).startswith(brand.name.lower().replace(" ", "-")):
