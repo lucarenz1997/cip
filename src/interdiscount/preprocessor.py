@@ -6,14 +6,15 @@ import spacy
 from deep_translator import GoogleTranslator
 class PreProcessor:
     def __init__(self, file_path):
-        # Load the dataset from the given file path (assuming it's a CSV)
+        # Load the dataset from the given file path
         self.df = pd.read_csv(file_path, delimiter='|')
         # Initialize the translator
         self._translator = GoogleTranslator(source='de', target='en')
         # Load the spaCy NLP model for NER (Named Entity Recognition)
         self._nlp = spacy.load("en_core_web_sm")
 
-    # Private function to extract the brand. For most cases, brands were somewhat easily extracted. For the other cases, NLP is used to extract the brand
+    # Private function to extract the brand. For most cases, brands were somewhat easily extracted.
+    # For the other cases, NLP is used to extract the brand
     def _extract_brand(self, name, brand):
         if brand == '':
 
@@ -48,9 +49,9 @@ class PreProcessor:
             return ''
         return re.sub(r'^[^a-zA-Z0-9]+', '', text)
 
-    # Private function to translate text from German to English
+    # Private function to translate text from German to English (very time-consuming!)
     def _translate_text(self, text):
-        # Define the character limit
+        # Define the character limit as we cannot translate more than 5k chars at once
         max_chars = 5000
 
         # Convert the text to a string if it isn't one already
@@ -74,14 +75,15 @@ class PreProcessor:
         # Clean the name and description
         cleaned_name = self._clean_text(row['name'])
         description = self._clean_text(row['description'])
-        brand = self._clean_text(row['brand'])
-        category = self._clean_text(row['category'])
 
-        # Extract the brand
+        brand = self._clean_text(row['brand'])
+        category = row['category']
+
+        # Extract the brand and update the name accordingly
         brand, name = self._extract_brand(cleaned_name, brand)
 
 
-        # Translate name and description
+        # Translate name, description and category (again: time-consuming)
         translated_name = self._translate_text(name)
         translated_description = self._translate_text(description)
         tranlsate_category = self._translate_text(category)
@@ -96,7 +98,7 @@ class PreProcessor:
 
     # Public method to process the entire dataset
     def process(self):
-        now = datetime.datetime.now()
+        start = datetime.datetime.now()
         total_rows = len(self.df)
         progress_interval = total_rows // 100 if total_rows >= 100 else 1  # Determine when to update the progress
 
@@ -114,4 +116,4 @@ class PreProcessor:
 
         # Time tracking
         after = datetime.datetime.now()
-        print(f"Started: {now}, Ended: {after}, Duration: {after - now}")
+        print(f"Started: {start}, Ended: {after}, Duration: {after - start}")

@@ -18,6 +18,8 @@ from src.model.article import Article
 from src.model.category import Category
 import unicodedata
 
+from src.utils.log_executor_decorator import log_execution
+
 
 # Scraper class for scraping articles from Interdiscount website.
 class Scraper:
@@ -33,6 +35,7 @@ class Scraper:
             columns=["name", "price", "description", "category", "rating", "brand",
                      "source"])  # DataFrame to hold all data
 
+    @log_execution
     def scrape(self):
         categories = self._get_categories()
         if self._interactive_mode:
@@ -100,7 +103,7 @@ class Scraper:
         categories = []
         for li in ul.find_all('li'):
             category_name = li.get_text(strip=True)
-            if category_name in ['Übersicht', 'Prospekt']:
+            if category_name in ['Übersicht', 'Prospekt']: #has no articles. hence, we ignore them
                 continue
             category_url = li.find('a').get('href') if li.find('a') else None
             categories.append(Category(category_name, category_url))
@@ -293,7 +296,6 @@ class Scraper:
             'utf-8').replace(" ", "-")#get rid of umlaut, etc.
 
         for brand in brands:
-            if str(article_link).startswith(brand.name.lower().replace(" ", "-")):  #
-                print(brand.name)
+            if str(article_link).startswith(brand.name.lower().replace(" ", "-")):
                 return brand.name
         return None
