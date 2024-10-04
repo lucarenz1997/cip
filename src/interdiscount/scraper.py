@@ -73,7 +73,10 @@ class Scraper(BaseScraper):
             if category_name in ['Übersicht', 'Prospekt']:  # has no articles. hence, we ignore them
                 continue
             category_url = li.find('a').get('href') if li.find('a') else None
-            categories.append(Category(category_name, category_url))
+
+            # we just want to go one level further down.
+            sub_cats = self._get_sub_categories(category_url)
+            categories.append(Category(category_name, category_url, sub_cats))
         return categories
 
     @log_execution
@@ -111,12 +114,12 @@ class Scraper(BaseScraper):
         return UIUtils.show_selection_window(brands, "Select the brands that you want to scrape")
 
     def _select_categories(self, categories):
-        return UIUtils.show_selection_window(categories, "Select the categories that you want to scrape")
+        return UIUtils.show_selection_window_dropdown(categories, "Select the categories that you want to scrape")
 
     def _close_cookie_banner(self):
         try:
             self._driver.find_element(By.CLASS_NAME, 'h-min').click()
-        except Exception as e:
+        except Exception:
             print("Cookie banner not found")
 
     def _extract_data(self, article_link, category, brand):
@@ -207,3 +210,14 @@ class Scraper(BaseScraper):
             if str(article_link).startswith(brand.name.lower().replace(" ", "-")):
                 return brand.name
         return None
+
+    def _get_sub_categories(self, category_url):
+        soup = self._update_soup(self._base_url + category_url, 0.3)
+        subcategories = []
+        for subcategory in soup.select('nav > ul',
+                    class_="divide-y divide-gray-200 overflow-hidden border-y border-y-gray-200 leading-7 text-gray-700")[
+            2].select('li > a')[2::]:
+            subcat_url = subcategory.get('href')
+            subcat_name = subcategory.text
+            subcategories.append(Category(subcat_name, subcat_url, None))
+        return subcategories
