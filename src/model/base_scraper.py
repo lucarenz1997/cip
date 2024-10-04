@@ -1,5 +1,6 @@
 import gc
 import os
+import time
 from abc import ABC, abstractmethod
 
 import pandas as pd
@@ -60,3 +61,22 @@ class BaseScraper(ABC):
         file_path = os.path.join(data_dir, file_name)
         df.to_csv(file_path, sep=separator, index=index)
         return file_path
+
+    def _update_soup(self, url=None, sleep_timer=None):
+        """
+        Fetches the page source from the given URL and returns the BeautifulSoup object.
+
+        :param url: The URL to fetch the page from.
+        :param sleep_timer: Optional sleep time before fetching the page source (default is None).
+        :return: BeautifulSoup object parsed from the fetched page.
+        """
+        if url:
+            self._driver.get(url)
+
+        if sleep_timer is not None:
+            time.sleep(sleep_timer)
+
+        html = self._driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+        return soup
+

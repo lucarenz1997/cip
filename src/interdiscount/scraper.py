@@ -1,9 +1,7 @@
 import re
-import time
 
 import pandas as pd
 import unicodedata
-from bs4 import BeautifulSoup
 from selenium.webdriver.common.by import By
 
 from src.model.article import Article
@@ -26,8 +24,7 @@ class Scraper(BaseScraper):
 
     @log_execution
     def scrape(self):
-        self._driver.get(self._base_url)
-        soup = BeautifulSoup(self._driver.page_source, 'html.parser')
+        soup = self._update_soup(self._base_url)
         categories = self._get_categories(soup)
         if self._interactive_mode:
             categories = self._select_categories(categories)
@@ -96,8 +93,7 @@ class Scraper(BaseScraper):
     def _get_all_brands(self):
         self._wait_until_element_located(By.XPATH, "//button[.//span[text()='Marken']]",
                                          'click')  # Open brands dropdown
-        time.sleep(0.2)
-        soup = BeautifulSoup(self._driver.page_source, 'html.parser')
+        soup = self._update_soup(sleep_timer=0.2)
         all_brands_list = soup.findAll("fieldset")[0].contents[2]
 
         brands = []
@@ -124,25 +120,13 @@ class Scraper(BaseScraper):
             print("Cookie banner not found")
 
     def _extract_data(self, article_link, category, brand):
-        self._driver.get(self._base_url + article_link)
-        time.sleep(0.3)
-        html = self._driver.page_source
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = self._update_soup(self._base_url + article_link)
 
         price = self._get_price(soup)
         name = soup.find('h1').contents[0].text.strip('"')
         description = self._get_description(soup)
         rating = self._get_rating()
         return Article(name, price, description, category, rating, brand, "interdiscount")
-
-    def _setup_soup(self, url):
-        self._driver.get(url)
-        html = self._driver.page_source
-        soup = BeautifulSoup(html, 'html.parser')
-        return soup
-
-
-
 
     def _get_price(self, soup):
         price = soup.find('span', attrs={'data-testid': 'product-price'})
@@ -163,9 +147,7 @@ class Scraper(BaseScraper):
             print("collapsible reviews not found")
 
         try:
-            time.sleep(0.3)
-            html = self._driver.page_source
-            soup = BeautifulSoup(html, 'html.parser')
+            soup = self._update_soup(sleep_timer=0.3)
             review_controls = soup.find(id='collapsible-reviews-controls')
             review_text = review_controls.text
             if "Es liegen noch keine Bewertungen vor" in review_text:
@@ -194,10 +176,7 @@ class Scraper(BaseScraper):
         while index <= self._max_pages_to_scrape and contains_clickable_weiter_button:
             index += 1
             url = self._base_url + category.url + f'?page={index}{brands_url}'
-            self._driver.get(url)
-            time.sleep(0.3)
-            soup = BeautifulSoup(self._driver.page_source, 'html.parser')
-
+            soup = self._update_soup(url=url,sleep_timer=0.4)
             yield from self._get_article_links(soup)
             contains_clickable_weiter_button = soup.select('a:-soup-contains("Weiter")')
 
