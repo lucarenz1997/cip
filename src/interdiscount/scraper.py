@@ -1,10 +1,11 @@
 import re
+import time
 
 import pandas as pd
 import unicodedata
 from selenium.webdriver.common.by import By
 
-from src.model.article import Article
+from src.interdiscount.model.interdiscount_article import InterdiscountArticle
 from src.model.base_scraper import BaseScraper
 from src.model.brand import Brand
 from src.model.category import Category
@@ -21,6 +22,9 @@ class Scraper(BaseScraper):
         super().__init__(base_url)
         self._interactive_mode = UIUtils.ask_interactive_mode() == 'yes'
         self._article_data = []  # Temporary list to store article data
+        self._df = pd.DataFrame(
+            columns=["name", "price", "description", "category", "rating", "brand",
+                     "source", "sub_category"])
 
     def scrape(self):
         soup = self._update_soup(self._base_url)
@@ -43,7 +47,8 @@ class Scraper(BaseScraper):
                         "category": article.category.name,
                         "rating": article.rating,
                         "brand": article.brand,
-                        "source": article.source
+                        "source": article.source,
+                        "sub_category": article.sub_category
                     })
 
                     # If we've collected 100 articles, append them to the dataframe
@@ -75,7 +80,7 @@ class Scraper(BaseScraper):
                 continue
             category_url = li.find('a').get('href') if li.find('a') else None
 
-            # we just want to go one level further down.
+            # we just want to go one level further down. if you're brave enough, do the recursion and you can wait 30 minutesto go through all categories ;-)
             sub_cats = self._get_sub_categories(category_url)
             categories.append(Category(category_name, category_url, sub_cats))
         return categories
@@ -125,7 +130,8 @@ class Scraper(BaseScraper):
         name = soup.find('h1').contents[0].text.strip('"')
         description = self._get_description(soup)
         rating = self._get_rating()
-        return Article(name, price, description, category, rating, brand, "interdiscount")
+        exact_category = soup.select('nav ol > li')[-2].text
+        return InterdiscountArticle(name, price, description, category, rating, brand, "interdiscount", exact_category)
 
     def _get_price(self, soup):
         price = soup.find('span', attrs={'data-testid': 'product-price'})
@@ -181,6 +187,7 @@ class Scraper(BaseScraper):
             contains_clickable_weiter_button = soup.select('a:-soup-contains("Weiter")')
 
     def _get_article_links(self, soup):
+        time.sleep(0.3)
         # Select the <ul> with the 'data-testid="category-wrapper"' attribute
         ul = soup.select_one('ul[data-testid="category-wrapper"]')
 

@@ -15,9 +15,6 @@ class BaseScraper(ABC):
     def __init__(self, base_url):
         self._base_url = base_url
         self._driver = WebDriverFactory.create_driver()
-        self._df = pd.DataFrame(
-            columns=["name", "price", "description", "category", "rating", "brand",
-                     "source"])  # DataFrame to hold all data
 
     @abstractmethod
     def scrape(self):
