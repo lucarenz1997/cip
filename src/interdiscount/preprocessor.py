@@ -6,6 +6,7 @@ import spacy
 from deep_translator import GoogleTranslator
 
 from src.model.base_preprocessor import BasePreProcessor
+from src.utils.log_executor_decorator import log_execution
 
 
 class PreProcessor(BasePreProcessor):
@@ -100,6 +101,7 @@ class PreProcessor(BasePreProcessor):
         })
 
     # Public method to process the entire dataset
+    @log_execution
     def process(self):
         start = datetime.datetime.now()
         total_rows = len(self.df)

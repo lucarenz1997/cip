@@ -124,18 +124,24 @@ class Scraper(BaseScraper):
             print("Cookie banner not found")
 
     def _extract_data(self, article_link, category, brand):
-        soup = self._setup_soup(article_link)
+        self._driver.get(self._base_url + article_link)
+        time.sleep(0.3)
+        html = self._driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+
         price = self._get_price(soup)
         name = soup.find('h1').contents[0].text.strip('"')
         description = self._get_description(soup)
         rating = self._get_rating()
         return Article(name, price, description, category, rating, brand, "interdiscount")
 
-    def _setup_soup(self, article_link):
-        self._driver.get(self._base_url + article_link)
+    def _setup_soup(self, url):
+        self._driver.get(url)
         html = self._driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
         return soup
+
+
 
 
     def _get_price(self, soup):
@@ -153,26 +159,28 @@ class Scraper(BaseScraper):
             return None
         try:
             self._wait_until_element_located(By.ID, "collapsible-reviews", 'click')  # open Reviews/Bewertungen
-            self._wait_until_element_located(By.ID, "collapsible-reviews-controls")
         except Exception as e:
             print("collapsible reviews not found")
 
         try:
-            time.sleep(0.1)
-            review_text = self._wait_until_element_located(By.XPATH, f"//*[@id='collapsible-reviews-controls']", 'text')
+            time.sleep(0.3)
+            html = self._driver.page_source
+            soup = BeautifulSoup(html, 'html.parser')
+            review_controls = soup.find(id='collapsible-reviews-controls')
+            review_text = review_controls.text
             if "Es liegen noch keine Bewertungen vor" in review_text:
                 rating = None
             elif "Es liegen nur wenige" in review_text:
-                rating_div = self._wait_until_element_located(By.XPATH,
-                                                              f"//*[@id='collapsible-reviews-controls']/*[1]/*[1]")
-                rating = float(rating_div.find_element(by=By.XPATH, value=".//div[3]").text)
+                first_child = review_controls.find_all(recursive=False)[0].find_all(recursive=False)[0]
+
+                # Find the third <div> inside the first child
+                rating_div = first_child.find_all('div')[2]
+                # Extract the text and convert to float
+                rating = float(rating_div.contents[0].text)
             else:  # there are reviews
-                rating = float(self._wait_until_element_located(By.XPATH,
-                                                                "//div[contains(text(), 'Gesamtbewertung')]").parent.find_element(
-                    by=By.XPATH, value=f"./*[1]").find_element(by=By.CLASS_NAME,
-                                                               value="mr-4").text)
-        except Exception as e:
-            print("Error caught: ", e)
+                rating = float(review_controls.find('div', class_='mr-4').text)
+        except Exception:
+            print("Rating could not be extracted")
             rating = None
         return rating
 
@@ -181,25 +189,31 @@ class Scraper(BaseScraper):
         if brands:
             brands_url = "&brand=" + "+".join([brand.name.replace(" ", "%2520") for brand in brands]) # brand names with "," etc do not work, sorry
 
-        self._driver.get(self._base_url + category.url + f'?page=1{brands_url}')
-        soup = BeautifulSoup(self._driver.page_source, 'html.parser')
-
         index = 1
-        last_page_processed = False
-        while index <= self._max_pages_to_scrape and not last_page_processed:
+        contains_clickable_weiter_button = True
+        while index <= self._max_pages_to_scrape and contains_clickable_weiter_button:
             index += 1
             url = self._base_url + category.url + f'?page={index}{brands_url}'
             self._driver.get(url)
+            time.sleep(0.3)
             soup = BeautifulSoup(self._driver.page_source, 'html.parser')
 
-            for a in soup.find_all('a', class_='Q_opE0', href=True):
-                yield a.get('href')
+            yield from self._get_article_links(soup)
+            contains_clickable_weiter_button = soup.select('a:-soup-contains("Weiter")')
 
-            disabled_buttons = soup.findAll('button', {'disabled': True})
-            for button in disabled_buttons:
-                if "Weiter" in button.text:
-                    last_page_processed = True
+    def _get_article_links(self, soup):
+        # Select the <ul> with the 'data-testid="category-wrapper"' attribute
+        ul = soup.select_one('ul[data-testid="category-wrapper"]')
+        # Check if the <ul> was found
+        if ul:
+            # Find all <li> > <article> > <a> inside the <ul> and extract the href attributes
+            links = ul.select('li > article > a')
 
+            # Loop through the links and print the href
+            for link in links:
+                yield link.get('href')
+        else:
+            print("No <ul> with data-testid='category-wrapper' found.")
 
     def _processed_last_page(self, index, soup):
         weiter_button = soup.find('li', class_='l-Be8I')  # fixed after update "
