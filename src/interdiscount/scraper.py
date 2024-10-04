@@ -22,12 +22,12 @@ class Scraper(BaseScraper):
         self._interactive_mode = UIUtils.ask_interactive_mode() == 'yes'
         self._article_data = []  # Temporary list to store article data
 
-    @log_execution
     def scrape(self):
         soup = self._update_soup(self._base_url)
         categories = self._get_categories(soup)
         if self._interactive_mode:
-            categories = self._select_categories(categories)
+            categories = UIUtils.show_selection_window_dropdown(categories,
+                                                                "Select the categories that you want to scrape")
 
         self._close_cookie_banner()
 
@@ -61,6 +61,7 @@ class Scraper(BaseScraper):
         self._df.to_csv(csv_file_path, sep='|', index=False)
 
         self._quit_driver()
+        print("SCRAPING DONE")
         return self._df
 
     @log_execution
@@ -82,7 +83,8 @@ class Scraper(BaseScraper):
     @log_execution
     def _scrape_category(self, category):
         self._driver.get(self._base_url + category.url + '?page=1')
-        brands = self._select_brands(self._get_all_brands()) if self._interactive_mode else []
+        brands = UIUtils.show_selection_window(self._get_all_brands(), "Select the brands that you want to scrape") \
+            if self._interactive_mode else []
 
         article_count = 0
         for article_link in self._extract_all_product_links_in_category(category, brands):
@@ -100,21 +102,15 @@ class Scraper(BaseScraper):
         all_brands_list = soup.findAll("fieldset")[0].contents[2]
 
         brands = []
-        for brand_element in all_brands_list.findAll('div')[::3]: #we have always 3 divs per entry
+        for brand_element in all_brands_list.findAll('div')[::3]:  # we have always 3 divs per entry
 
-            match = re.match(r'(.*?)\s*\((\d+)\)', brand_element.text) # Brand (# of articles))
+            match = re.match(r'(.*?)\s*\((\d+)\)', brand_element.text)  # Brand (# of articles))
             if match:
                 brand_name = match.group(1).strip()
                 article_count = int(match.group(2))
                 brands.append(Brand(brand_name, article_count))
 
         return brands
-
-    def _select_brands(self, brands):
-        return UIUtils.show_selection_window(brands, "Select the brands that you want to scrape")
-
-    def _select_categories(self, categories):
-        return UIUtils.show_selection_window_dropdown(categories, "Select the categories that you want to scrape")
 
     def _close_cookie_banner(self):
         try:
@@ -172,35 +168,30 @@ class Scraper(BaseScraper):
     def _extract_all_product_links_in_category(self, category, brands):
         brands_url = ""
         if brands:
-            brands_url = "&brand=" + "+".join([brand.name.replace(" ", "%2520") for brand in brands]) # brand names with "," etc do not work, sorry
+            brands_url = "&brand=" + "+".join(
+                [brand.name.replace(" ", "%2520") for brand in brands])  # brand names with "," etc do not work, sorry
 
         index = 1
         contains_clickable_weiter_button = True
         while index <= self._max_pages_to_scrape and contains_clickable_weiter_button:
             index += 1
             url = self._base_url + category.url + f'?page={index}{brands_url}'
-            soup = self._update_soup(url=url,sleep_timer=0.4)
+            soup = self._update_soup(url=url, sleep_timer=0.4)
             yield from self._get_article_links(soup)
             contains_clickable_weiter_button = soup.select('a:-soup-contains("Weiter")')
 
     def _get_article_links(self, soup):
         # Select the <ul> with the 'data-testid="category-wrapper"' attribute
         ul = soup.select_one('ul[data-testid="category-wrapper"]')
-        # Check if the <ul> was found
+
         if ul:
             # Find all <li> > <article> > <a> inside the <ul> and extract the href attributes
             links = ul.select('li > article > a')
 
-            # Loop through the links and print the href
             for link in links:
                 yield link.get('href')
         else:
             print("No <ul> with data-testid='category-wrapper' found.")
-
-    def _processed_last_page(self, index, soup):
-        weiter_button = soup.find('li', class_='l-Be8I')  # fixed after update "
-        parent = weiter_button.parent
-        return index - 1 == int(parent.contents[len(parent) - 2].text)
 
     def _get_brand(self, article_link, brands):
         article_link = unicodedata.normalize('NFKD', article_link.split("/")[3]).encode('ascii', 'ignore').decode(
@@ -215,8 +206,8 @@ class Scraper(BaseScraper):
         soup = self._update_soup(self._base_url + category_url, 0.3)
         subcategories = []
         for subcategory in soup.select('nav > ul',
-                    class_="divide-y divide-gray-200 overflow-hidden border-y border-y-gray-200 leading-7 text-gray-700")[
-            2].select('li > a')[2::]:
+                                       class_="divide-y divide-gray-200 overflow-hidden border-y border-y-gray-200 leading-7 text-gray-700")[
+                               2].select('li > a')[2::]:
             subcat_url = subcategory.get('href')
             subcat_name = subcategory.text
             subcategories.append(Category(subcat_name, subcat_url, None))
