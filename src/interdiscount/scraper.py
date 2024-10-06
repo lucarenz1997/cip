@@ -29,8 +29,7 @@ class Scraper(BaseScraper):
 
     def scrape(self):
         print(f"Fetching categories from {self._base_url}")
-        soup = self._update_soup(self._base_url)
-        categories = self._get_categories(soup)
+        categories = self._get_categories()
         if self._interactive_mode:
             categories = UIUtils.show_selection_window_dropdown(categories,
                                                                 "Select the categories that you want to scrape")
@@ -72,7 +71,8 @@ class Scraper(BaseScraper):
         return self._df
 
     @log_execution
-    def _get_categories(self, soup):
+    def _get_categories(self):
+        soup = self._update_soup(self._base_url)
         navigation_bar = soup.findAll('nav')
         ul = navigation_bar[2].find('ul')
         categories = []
