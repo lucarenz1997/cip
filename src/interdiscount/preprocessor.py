@@ -82,6 +82,7 @@ class PreProcessor(BasePreProcessor):
 
         brand = self._clean_text(row['brand'])
         category = row['category']
+        sub_category = row['sub_category']
 
         # Extract the brand and update the name accordingly
         brand, name = self._extract_brand(cleaned_name, brand)
@@ -90,14 +91,16 @@ class PreProcessor(BasePreProcessor):
         # Translate name, description and category (again: time-consuming)
         translated_name = self._translate_text(name)
         translated_description = self._translate_text(description)
-        tranlsate_category = self._translate_text(category)
+        tranlsated_category = self._translate_text(category)
+        tranlsated_sub_category = self._translate_text(category)
 
         # Return processed data
         return pd.Series({
             'brand': brand,
             'name': translated_name,
             'description': translated_description,
-            'category': tranlsate_category
+            'category': tranlsated_category,
+            'sub_category': tranlsated_sub_category
         })
 
     # Public method to process the entire dataset
@@ -109,7 +112,7 @@ class PreProcessor(BasePreProcessor):
 
         # Apply the processing to each row of the DataFrame
         for idx, row in self.df.iterrows():
-            self.df.loc[idx, ['brand', 'name', 'description', 'category']] = self._process_row(row)
+            self.df.loc[idx, ['brand', 'name', 'description', 'category', 'sub_category']] = self._process_row(row)
 
             # Show progress for every 1% of the total rows
             if idx % progress_interval == 0:

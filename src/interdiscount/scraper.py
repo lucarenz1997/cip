@@ -11,6 +11,7 @@ from src.model.brand import Brand
 from src.model.category import Category
 from src.utils.log_executor_decorator import log_execution
 from src.utils.ui_utils import UIUtils
+from urllib.parse import quote
 
 
 # Scraper class for scraping articles from Interdiscount website.
@@ -27,6 +28,7 @@ class Scraper(BaseScraper):
                      "source", "sub_category"])
 
     def scrape(self):
+        print(f"Fetching categories from {self._base_url}")
         soup = self._update_soup(self._base_url)
         categories = self._get_categories(soup)
         if self._interactive_mode:
@@ -109,7 +111,7 @@ class Scraper(BaseScraper):
         brands = []
         for brand_element in all_brands_list.findAll('div')[::3]:  # we have always 3 divs per entry
 
-            match = re.match(r'(.*?)\s*\((\d+)\)', brand_element.text)  # Brand (# of articles))
+            match = re.match(r'(.*?)\s*\((\d+)\)', brand_element.text)  # Brand (# of articles)
             if match:
                 brand_name = match.group(1).strip()
                 article_count = int(match.group(2))
@@ -175,7 +177,7 @@ class Scraper(BaseScraper):
         brands_url = ""
         if brands:
             brands_url = "&brand=" + "+".join(
-                [brand.name.replace(" ", "%2520") for brand in brands])  # brand names with "," etc do not work, sorry
+                [quote(brand.name, encoding='UTF-8') for brand in brands])  # brand names with "," etc do not work, sorry
 
         index = 1
         contains_clickable_weiter_button = True
@@ -183,8 +185,8 @@ class Scraper(BaseScraper):
             index += 1
             url = self._base_url + category.url + f'?page={index}{brands_url}'
             soup = self._update_soup(url=url, sleep_timer=0.4)
-            yield from self._get_article_links(soup)
             contains_clickable_weiter_button = soup.select('a:-soup-contains("Weiter")')
+            yield from self._get_article_links(soup)
 
     def _get_article_links(self, soup):
         time.sleep(0.3)
