@@ -23,13 +23,15 @@ class BaseScraper(ABC):
         """
         pass
 
-    def _wait_until_element_located(self, by, value, action=None):
+    def _wait_until_element_located(self, by, value, action=None, sleep_time=0):
         try:
             wait = WebDriverWait(self._driver, 3)
             element = wait.until(EC.presence_of_element_located((by, value)))
 
             self._driver.execute_script("arguments[0].scrollIntoView();", element)
+            time.sleep(sleep_time)
             self._driver.execute_script("window.scrollBy(0, -150);")
+            time.sleep(sleep_time)
 
             if action == 'click':
                 element.click()
@@ -39,7 +41,6 @@ class BaseScraper(ABC):
                 return element
             return element
         except Exception as e:
-            print(f"Element {value} not found: {e}")
             return None
 
     def _release_memory(self):

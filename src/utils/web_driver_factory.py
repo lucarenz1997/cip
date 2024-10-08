@@ -14,4 +14,5 @@ class WebDriverFactory:
         options.headless = headless  # Enable headless mode by default
 
         driver = webdriver.Firefox(options=options)
+        driver.maximize_window()
         return driver
