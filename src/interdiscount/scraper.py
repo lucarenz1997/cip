@@ -4,6 +4,8 @@ import time
 import pandas as pd
 import unicodedata
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.wait import WebDriverWait
 
 from src.interdiscount.model.interdiscount_article import InterdiscountArticle
 from src.model.base_scraper import BaseScraper
@@ -11,7 +13,8 @@ from src.model.brand import Brand
 from src.model.category import Category
 from src.utils.log_executor_decorator import log_execution
 from src.utils.ui_utils import UIUtils
-from urllib.parse import quote
+
+CATEGORIES_TO_SCRAPE = ['TV & Audio', 'Computer & Gaming']
 
 
 # Scraper class for scraping articles from Interdiscount website.
@@ -34,7 +37,7 @@ class Scraper(BaseScraper):
         categories = self._get_categories()
         if self._interactive_mode:
             categories = UIUtils.show_selection_window_dropdown_3_levels(categories,
-                                                                "Select the categories that you want to scrape")
+                                                                         "Select the categories that you want to scrape")
 
         self._close_cookie_banner()
 
@@ -56,7 +59,8 @@ class Scraper(BaseScraper):
                     # If we've collected 100 articles, append them to the dataframe
                     if len(self._article_data) >= self._save_interval:
                         print("writing into df")
-                        self._article_df = pd.concat([self._article_df, pd.DataFrame(self._article_data)], ignore_index=True)
+                        self._article_df = pd.concat([self._article_df, pd.DataFrame(self._article_data)],
+                                                     ignore_index=True)
                         self._article_data.clear()  # Clear the list after appending
 
         # Append any remaining data to the dataframe at the end of scraping
@@ -79,8 +83,8 @@ class Scraper(BaseScraper):
         categories = []
         for li in ul.find_all('li'):
             category_name = li.get_text(strip=True)
-            # if category_name in ['Übersicht', 'Prospekt']:  # has no articles. hence, we ignore them
-            if category_name not in ['TV & Audio']:  # if you only want to check the headphones example, comment the upper if statement and comment this one out (for time-reasons)
+            # if category_name in ['Übersicht', 'Prospekt']:  # has no articles. hence, we ignore them. if you want to scrape everything except those.
+            if category_name not in CATEGORIES_TO_SCRAPE:  # if you only want to check the headphones example, comment the upper if statement out and comment this one (for time-reasons)
                 continue
             category_url = li.find('a').get('href') if li.find('a') else None
 
@@ -99,14 +103,17 @@ class Scraper(BaseScraper):
 
         selected_brands = UIUtils.show_selection_window(all_brands, "Select the brands that you want to scrape") \
             if self._interactive_mode else []
+
+        self._click_on_selected_brands(selected_brands)
         # add all brands to dataframe: self._brands_df.
         self._update_brands_df(subcategory_name, all_brands)
+
         article_count = 0
-        for article_link in self._extract_all_product_links_in_category(category, selected_brands):
+        for article_link in self._extract_all_product_links_in_category():
 
             yield self._extract_data(article_link, category, self._get_brand(article_link, selected_brands))
             article_count += 1
-            if article_count % 300 == 0: # in case you want to scrape the entire interdiscount, we make sure your application does not crash due to memory issues.
+            if article_count % 300 == 0:  # in case you want to scrape the entire interdiscount, we make sure your application does not crash due to memory issues.
                 self._release_memory()
 
     def _get_deepest_subcategory_name(self, category):
@@ -186,7 +193,7 @@ class Scraper(BaseScraper):
     def _get_rating(self):
 
         if not self._wait_until_element_located(By.XPATH, "//button[text()='Bewertungen']"):
-            return None # articles to be reserved do not have this
+            return None  # articles to be reserved do not have this
         try:
             self._wait_until_element_located(By.ID, "collapsible-reviews", 'click')  # open Reviews/Bewertungen
         except Exception as e:
@@ -211,17 +218,13 @@ class Scraper(BaseScraper):
             rating = None
         return rating
 
-    def _extract_all_product_links_in_category(self, category, brands):
-        brands_url = ""
-        if brands:
-            brands_url = "&brand=" + "+".join(
-                [quote(brand.name, encoding='UTF-8') for brand in brands])  # brand names with "," etc do not work, sorry
-
-        index = 1
+    def _extract_all_product_links_in_category(self):
+        index = 0
         contains_clickable_weiter_button = True
-        while index <= self._max_pages_to_scrape and contains_clickable_weiter_button:
+        current_url = self._driver.current_url
+        while index < self._max_pages_to_scrape and contains_clickable_weiter_button:
             index += 1
-            url = self._base_url + category.url + f'?page={index}{brands_url}'
+            url = current_url + f'&page={index}'
             soup = self._update_soup(url=url, sleep_timer=0.4)
             contains_clickable_weiter_button = soup.select('a:-soup-contains("Weiter")')
             yield from self._get_article_links(soup)
@@ -249,18 +252,34 @@ class Scraper(BaseScraper):
                 return brand.name
         return None
 
-    def _get_sub_categories(self, category_url, index = 0):
+    def _get_sub_categories(self, category_url, index=0):
         soup = self._update_soup(self._base_url + category_url, 0.3)
         subcategories = []
         for subcategory in soup.select('nav > ul',
                                        class_="divide-y divide-gray-200 overflow-hidden border-y border-y-gray-200 leading-7 text-gray-700")[
-                               2].select('li > a')[2+index::]: # we only want its sub categories. so the index increases per subcategory
+                               2].select('li > a')[
+                           2 + index::]:  # we only want its sub categories. so the index increases per subcategory
             subcat_url = subcategory.get('href')
             subcat_name = subcategory.text
             if index == 0:
-                sub_sub_cat = self._get_sub_categories(subcat_url, index=index+1)
+                sub_sub_cat = self._get_sub_categories(subcat_url, index=index + 1)
             else:
                 sub_sub_cat = None
 
             subcategories.append(Category(subcat_name, subcat_url, sub_sub_cat))
         return subcategories
+
+    def _click_on_selected_brands(self, brands):
+        for brand in brands:
+            chosen_brand_element = self._driver.find_element(By.XPATH,
+                                      f"//div[@aria-label='Optionen wählen']//div[@aria-label='{brand.name}']")
+            self._driver.execute_script("arguments[0].scrollIntoView();", chosen_brand_element)
+            time.sleep(0.1)
+            self._driver.execute_script("window.scrollBy(0, -150);")
+            chosen_brand_element.click()
+            time.sleep(0.1)
+
+        wait = WebDriverWait(self._driver, 3)
+        element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "button[aria-label='Filter anwenden']")))
+        element.click()
+    pass
