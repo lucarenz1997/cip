@@ -100,7 +100,8 @@ class PreProcessor(BasePreProcessor):
             'name': translated_name,
             'description': translated_description,
             'category': tranlsated_category,
-            'sub_category': tranlsated_sub_category
+            'sub_category': tranlsated_sub_category,
+            'source': "interdiscount"
         })
 
     # Public method to process the entire dataset
@@ -112,7 +113,7 @@ class PreProcessor(BasePreProcessor):
 
         # Apply the processing to each row of the DataFrame
         for idx, row in self.df.iterrows():
-            self.df.loc[idx, ['brand', 'name', 'description', 'category', 'sub_category']] = self._process_row(row)
+            self.df.loc[idx, ['brand', 'name', 'description', 'category', 'sub_category', 'source']] = self._process_row(row)
 
             # Show progress for every 1% of the total rows
             if idx % progress_interval == 0:

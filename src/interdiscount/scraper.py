@@ -23,15 +23,17 @@ class Scraper(BaseScraper):
         super().__init__(base_url)
         self._interactive_mode = UIUtils.ask_interactive_mode() == 'yes'
         self._article_data = []  # Temporary list to store article data
-        self._df = pd.DataFrame(
-            columns=["name", "price", "description", "category", "rating", "brand",
-                     "source", "sub_category"])
+        self._brands_df = pd.DataFrame(
+            columns=["category", "brand_name", "article_count"]
+        )
+        self._article_df = pd.DataFrame(
+            columns=["name", "price", "description", "category", "rating", "brand", "sub_category"])
 
     def scrape(self):
         print(f"Fetching categories from {self._base_url}")
         categories = self._get_categories()
         if self._interactive_mode:
-            categories = UIUtils.show_selection_window_dropdown(categories,
+            categories = UIUtils.show_selection_window_dropdown_3_levels(categories,
                                                                 "Select the categories that you want to scrape")
 
         self._close_cookie_banner()
@@ -48,27 +50,26 @@ class Scraper(BaseScraper):
                         "category": article.category.name,
                         "rating": article.rating,
                         "brand": article.brand,
-                        "source": article.source,
                         "sub_category": article.sub_category
                     })
 
                     # If we've collected 100 articles, append them to the dataframe
                     if len(self._article_data) >= self._save_interval:
                         print("writing into df")
-                        self._df = pd.concat([self._df, pd.DataFrame(self._article_data)], ignore_index=True)
+                        self._article_df = pd.concat([self._article_df, pd.DataFrame(self._article_data)], ignore_index=True)
                         self._article_data.clear()  # Clear the list after appending
 
         # Append any remaining data to the dataframe at the end of scraping
         if self._article_data:
-            self._df = pd.concat([self._df, pd.DataFrame(self._article_data)], ignore_index=True)
+            self._article_df = pd.concat([self._article_df, pd.DataFrame(self._article_data)], ignore_index=True)
 
         # Save the dataframe to CSV at the end
-        csv_file_path = self.save_to_csv(self._df, 'raw.csv')
-        self._df.to_csv(csv_file_path, sep='|', index=False)
+        csv_file_path = self.save_to_csv(self._article_df, 'raw.csv')
+        self._article_df.to_csv(csv_file_path, sep='|', index=False)
 
         self._quit_driver()
         print("SCRAPING DONE")
-        return self._df
+        return self._article_df
 
     @log_execution
     def _get_categories(self):
@@ -78,11 +79,12 @@ class Scraper(BaseScraper):
         categories = []
         for li in ul.find_all('li'):
             category_name = li.get_text(strip=True)
-            if category_name in ['Übersicht', 'Prospekt']:  # has no articles. hence, we ignore them
+            # if category_name in ['Übersicht', 'Prospekt']:  # has no articles. hence, we ignore them
+            if category_name not in ['TV & Audio']:  # if you only want to check the headphones example, comment the upper if statement and comment this one out (for time-reasons)
                 continue
             category_url = li.find('a').get('href') if li.find('a') else None
 
-            # we just want to go one level further down. if you're brave enough, do the recursion and you can wait 30 minutesto go through all categories ;-)
+            # we just want to go two levels further down. if you're brave enough, do the recursion and you can wait 30+ minutes to go through all categories and its sub-sub-sub....categories ;-)
             sub_cats = self._get_sub_categories(category_url)
             categories.append(Category(category_name, category_url, sub_cats))
         return categories
@@ -90,16 +92,53 @@ class Scraper(BaseScraper):
     @log_execution
     def _scrape_category(self, category):
         self._driver.get(self._base_url + category.url + '?page=1')
-        brands = UIUtils.show_selection_window(self._get_all_brands(), "Select the brands that you want to scrape") \
+        all_brands = self._get_all_brands()
+
+        # Get the deepest subcategory or category name
+        subcategory_name = self._get_deepest_subcategory_name(category)
+
+        selected_brands = UIUtils.show_selection_window(all_brands, "Select the brands that you want to scrape") \
             if self._interactive_mode else []
-
+        # add all brands to dataframe: self._brands_df.
+        self._update_brands_df(subcategory_name, all_brands)
         article_count = 0
-        for article_link in self._extract_all_product_links_in_category(category, brands):
+        for article_link in self._extract_all_product_links_in_category(category, selected_brands):
 
-            yield self._extract_data(article_link, category, self._get_brand(article_link, brands))
+            yield self._extract_data(article_link, category, self._get_brand(article_link, selected_brands))
             article_count += 1
-            if article_count % 300 == 0:
+            if article_count % 300 == 0: # in case you want to scrape the entire interdiscount, we make sure your application does not crash due to memory issues.
                 self._release_memory()
+
+    def _get_deepest_subcategory_name(self, category):
+        """Recursively get the name of the deepest subcategory or the category name itself."""
+        # Traverse subcategories until you reach the last one
+        current_category = category
+        while current_category.subcategory:
+            # Move to the last subcategory in the list
+            current_category = current_category.subcategory[-1]
+
+        return current_category.name
+
+    def _update_brands_df(self, category_name, brands):
+        """Update the brands DataFrame with the latest brand names and article counts."""
+
+        # Create a list of dictionaries for each brand's name and article count
+        brand_data = [
+            {
+                "category": category_name,  # Same category for all
+                "brand_name": brand.name,  # Use brand.name attribute
+                "article_count": brand.article_count  # Use brand.article_count attribute
+            }
+            for brand in brands  # Loop through the brands array
+        ]
+
+        # Append the data to the DataFrame
+        self._brands_df = pd.concat([self._brands_df, pd.DataFrame(brand_data)], ignore_index=True)
+
+        # Write the DataFrame to a CSV file after processing each category
+        self._brands_df.to_csv("data\\brands.csv", index=False)
+
+        print(f"Data for {category_name} saved to brands.csv")
 
     @log_execution
     def _get_all_brands(self):
@@ -133,7 +172,7 @@ class Scraper(BaseScraper):
         description = self._get_description(soup)
         rating = self._get_rating()
         exact_category = soup.select('nav ol > li')[-2].text
-        return InterdiscountArticle(name, price, description, category, rating, brand, "interdiscount", exact_category)
+        return InterdiscountArticle(name, price, description, category, rating, brand, exact_category)
 
     def _get_price(self, soup):
         price = soup.find('span', attrs={'data-testid': 'product-price'})
@@ -145,13 +184,13 @@ class Scraper(BaseScraper):
         return description.strip('"') if description else None
 
     def _get_rating(self):
-        # articles to be reserved do not have this
+
         if not self._wait_until_element_located(By.XPATH, "//button[text()='Bewertungen']"):
-            return None
+            return None # articles to be reserved do not have this
         try:
             self._wait_until_element_located(By.ID, "collapsible-reviews", 'click')  # open Reviews/Bewertungen
         except Exception as e:
-            print("collapsible reviews not found")
+            print("collapsible reviews does not exist")
 
         try:
             soup = self._update_soup(sleep_timer=0.3)
@@ -164,12 +203,11 @@ class Scraper(BaseScraper):
 
                 # Find the third <div> inside the first child
                 rating_div = first_child.find_all('div')[2]
-                # Extract the text and convert to float
                 rating = float(rating_div.contents[0].text)
             else:  # there are reviews
                 rating = float(review_controls.find('div', class_='mr-4').text)
         except Exception:
-            print("Rating could not be extracted")
+            # other way of not having any reviews (interdiscount has multiple ways to display this)
             rating = None
         return rating
 
@@ -211,7 +249,7 @@ class Scraper(BaseScraper):
                 return brand.name
         return None
 
-    def _get_sub_categories(self, category_url):
+    def _get_sub_categories(self, category_url, index = 0):
         soup = self._update_soup(self._base_url + category_url, 0.3)
         subcategories = []
         for subcategory in soup.select('nav > ul',
@@ -219,5 +257,10 @@ class Scraper(BaseScraper):
                                2].select('li > a')[2::]:
             subcat_url = subcategory.get('href')
             subcat_name = subcategory.text
-            subcategories.append(Category(subcat_name, subcat_url, None))
+            if index == 0:
+                sub_sub_cat = self._get_sub_categories(subcat_url, index=index+1)
+            else:
+                sub_sub_cat = None
+
+            subcategories.append(Category(subcat_name, subcat_url, sub_sub_cat))
         return subcategories
