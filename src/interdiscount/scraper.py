@@ -98,15 +98,12 @@ class Scraper(BaseScraper):
         self._driver.get(self._base_url + category.url + '?page=1')
         all_brands = self._get_all_brands()
 
-        # Get the deepest subcategory or category name
-        subcategory_name = self._get_deepest_subcategory_name(category)
-
         selected_brands = UIUtils.show_selection_window(all_brands, "Select the brands that you want to scrape") \
             if self._interactive_mode else []
 
         self._click_on_selected_brands(selected_brands)
         # add all brands to dataframe: self._brands_df.
-        self._update_brands_df(subcategory_name, all_brands)
+        self._update_brands_df(category.name, all_brands)
 
         article_count = 0
         for article_link in self._extract_all_product_links_in_category():
@@ -116,23 +113,13 @@ class Scraper(BaseScraper):
             if article_count % 300 == 0:  # in case you want to scrape the entire interdiscount, we make sure your application does not crash due to memory issues.
                 self._release_memory()
 
-    def _get_deepest_subcategory_name(self, category):
-        """Recursively get the name of the deepest subcategory or the category name itself."""
-        # Traverse subcategories until you reach the last one
-        current_category = category
-        while current_category.subcategory:
-            # Move to the last subcategory in the list
-            current_category = current_category.subcategory[-1]
-
-        return current_category.name
-
     def _update_brands_df(self, category_name, brands):
         """Update the brands DataFrame with the latest brand names and article counts."""
 
         # Create a list of dictionaries for each brand's name and article count
         brand_data = [
             {
-                "category": category_name,  # Same category for all
+                "category": category_name,  # The chosen category
                 "brand_name": brand.name,  # Use brand.name attribute
                 "article_count": brand.article_count  # Use brand.article_count attribute
             }
