@@ -254,7 +254,7 @@ class Scraper(BaseScraper):
         subcategories = []
         for subcategory in soup.select('nav > ul',
                                        class_="divide-y divide-gray-200 overflow-hidden border-y border-y-gray-200 leading-7 text-gray-700")[
-                               2].select('li > a')[2::]:
+                               2].select('li > a')[2+index::]: # we only want its sub categories. so the index increases per subcategory
             subcat_url = subcategory.get('href')
             subcat_name = subcategory.text
             if index == 0:
